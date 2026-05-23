@@ -12,10 +12,10 @@ export function Pricing() {
         <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <span className="rounded-md border border-cyan-200/25 bg-cyan-200/10 px-3 py-1.5 text-xs font-semibold text-cyan-100">
-              Количество мест с кураторами ограничено
+              Кураторы работают с каждым проектом отдельно
             </span>
             <h2 className="mt-5 text-3xl font-semibold leading-[1.02] text-white sm:text-5xl">
-              Закрытый поток стартует 21 числа
+              Если хочешь собрать свою версию — оставь заявку
             </h2>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -41,7 +41,7 @@ export function Pricing() {
               <h3 className="text-2xl font-semibold text-white">{plan.title}</h3>
               <p className="mt-3 min-h-[72px] text-sm leading-6 text-slate-300">{plan.text}</p>
               <div className="mt-6 space-y-2">
-                {["рабочий артефакт", "чат и разборы", "записи навсегда"].map((feature) => (
+                {["рабочая версия", "чат и разборы", "записи и шаблоны"].map((feature) => (
                   <div key={feature} className="flex items-center gap-2 text-sm text-slate-200">
                     <CheckCircle2 className="size-4 text-cyan-200" />
                     {feature}
@@ -53,7 +53,7 @@ export function Pricing() {
         </div>
         <p className="mt-5 flex items-center gap-2 text-sm text-slate-300">
           <Send className="size-4 text-cyan-200" />
-          Каждый участник собирает свой проект, поэтому кураторские места нельзя масштабировать бесконечно.
+          В заявке коротко напиши, что хочешь собрать: лендинг, бот, CRM, РКО-путь, контент или MVP.
         </p>
       </div>
     </SectionReveal>

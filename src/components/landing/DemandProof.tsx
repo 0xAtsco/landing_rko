@@ -11,19 +11,20 @@ export function DemandProof() {
         <div className="mb-7 grid gap-5 lg:grid-cols-[0.9fr_0.45fr] lg:items-end">
           <div>
           <p className="text-sm font-medium uppercase tracking-[0.22em] text-cyan-200/80">
-            спрос уже есть
+            запрос с рынка
           </p>
           <h2 className="mt-3 max-w-3xl text-3xl font-semibold leading-[1.02] text-white sm:text-5xl">
-            Люди спрашивают не про AI. Они спрашивают, как собрать инструмент.
+            Людям не нужна лекция. Им нужна страница, бот и заявки.
           </h2>
           <p className="mt-4 text-base leading-7 text-slate-300">
-            После первых демонстраций люди начали писать не «расскажи про AI»,
-            а «помоги собрать сайт, бота, админку и автоматизацию».
+            РКО, Telegram, продюсеры и трафик-команды упираются в одно: оффер
+            есть, люди приходят, но путь до заявки собран плохо. На спринте мы
+            собираем этот путь в рабочую версию.
           </p>
           </div>
           <div className="rounded-lg border border-cyan-200/14 bg-[#071a33]/70 p-4 font-mono text-xs text-slate-300 backdrop-blur-xl">
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-cyan-100">inbox pressure</span>
+              <span className="text-cyan-100">запросы</span>
               <span className="rounded bg-cyan-300 px-1.5 py-0.5 text-[10px] text-slate-950">live</span>
             </div>
             <div className="space-y-2">

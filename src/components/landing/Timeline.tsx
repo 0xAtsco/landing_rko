@@ -27,15 +27,16 @@ export function Timeline() {
             14 дней
           </p>
           <h2 className="mt-3 text-3xl font-semibold leading-[1.02] text-white sm:text-5xl">
-            Как проходит спринт
+            Как из идеи получается рабочая версия
           </h2>
           <p className="mt-4 text-base leading-7 text-slate-300">
-            Каждый шаг ведет не к «уроку», а к части готового артефакта.
+            Каждый шаг отвечает на три вопроса: что строим, зачем это нужно и
+            как довести до запуска без лишней сложности.
           </p>
           <div className="mt-7 rounded-lg border border-cyan-200/12 bg-[#06172e]/75 p-4">
             <div className="mb-3 flex justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-slate-400">
               <span>sprint route</span>
-              <span className="text-cyan-200">artifact</span>
+              <span className="text-cyan-200">результат</span>
             </div>
             <div className="grid grid-cols-7 gap-1.5">
               {timeline.map((item, index) => (

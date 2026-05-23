@@ -28,13 +28,13 @@ export function BentoBuilds() {
             что ты можешь собрать
           </p>
           <h2 className="mt-3 max-w-3xl text-3xl font-semibold leading-[0.98] text-white sm:text-5xl">
-            Не конспект. Рабочий артефакт под твою задачу.
+            Выбираешь один результат и доводишь его до запуска.
           </h2>
           </div>
           <div className="rounded-lg border border-cyan-200/14 bg-black/20 p-4 font-mono text-xs text-slate-300 backdrop-blur-xl">
             <div className="mb-3 flex justify-between text-cyan-100">
-              <span>build matrix</span>
-              <span>8 paths</span>
+              <span>варианты</span>
+              <span>8 задач</span>
             </div>
             <div className="grid grid-cols-8 gap-1">
               {Array.from({ length: 32 }).map((_, index) => (
@@ -81,7 +81,7 @@ function MiniPreview({ type }: { type: string }) {
   if (type === "bot") {
     return (
       <div className="space-y-2 rounded-lg border border-white/10 bg-black/28 p-3 shadow-[inset_0_0_28px_rgba(34,211,238,0.04)]">
-        {["Привет. Какая задача?", "Нужен сайт + бот", "Принял. Отправил лид."].map((line, i) => (
+        {["Привет. Какая задача?", "Нужен РКО + заявка", "Принял. Передал менеджеру."].map((line, i) => (
           <div key={line} className={`chat-pop w-fit max-w-[88%] rounded-lg px-3 py-2 text-xs ${i === 1 ? "ml-auto bg-cyan-300 text-slate-950" : "bg-white/10 text-slate-200"}`} style={{ animationDelay: `${i * 0.18}s` }}>
             {line}
           </div>
@@ -94,7 +94,7 @@ function MiniPreview({ type }: { type: string }) {
     return (
       <div className="rounded-lg border border-white/10 bg-black/28 p-3">
         <div className="mb-3 grid grid-cols-3 gap-1.5">
-          {["lead", "score", "next"].map((item, index) => (
+          {["лид", "статус", "шаг"].map((item, index) => (
             <span key={item} className={`rounded px-2 py-1 text-center font-mono text-[9px] uppercase tracking-[0.12em] ${index === 1 ? "bg-cyan-300/80 text-slate-950" : "bg-white/8 text-slate-300"}`}>
               {item}
             </span>

@@ -8,10 +8,10 @@ export function Format() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-10 max-w-3xl">
           <p className="text-sm font-medium uppercase tracking-[0.22em] text-cyan-200/80">
-            support system
+            формат
           </p>
           <h2 className="mt-3 text-3xl font-semibold leading-[1.02] text-white sm:text-5xl">
-            Ты не остаешься один на один с кодом
+            Тебе помогают собрать, проверить и докрутить
           </h2>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

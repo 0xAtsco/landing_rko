@@ -13,10 +13,10 @@ export function Cases() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-10 max-w-3xl">
           <p className="text-sm font-medium uppercase tracking-[0.22em] text-violet-200/80">
-            артефакты вместо обещаний
+            примеры задач
           </p>
           <h2 className="mt-3 text-3xl font-semibold leading-[1.02] text-white sm:text-5xl">
-            Что уже можно собрать на таком подходе
+            Не “посмотреть уроки”, а собрать понятный инструмент
           </h2>
         </div>
 
@@ -41,7 +41,7 @@ export function Cases() {
                   <span className="size-2.5 rounded-full bg-emerald-300/80" />
                   </div>
                   <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-                    artifact.0{index + 1}
+                    пример.0{index + 1}
                   </span>
                 </div>
                 <div className="mb-5 rounded-lg border border-white/10 bg-black/24 p-3">
@@ -67,7 +67,7 @@ function CaseWindow({ index }: { index: number }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-[1fr_auto] gap-3 rounded-md border border-white/8 bg-white/[0.035] p-2 font-mono text-[10px] text-slate-400">
-        <span>{["content.ops", "sales.agent", "shorts.flow", "rko.pipe", "crm.core"][index]}</span>
+        <span>{["tg.funnel", "rko.pipe", "offer.page", "crm.core", "account.pack"][index]}</span>
         <span className="text-cyan-200">active</span>
       </div>
       {Array.from({ length: 4 }).map((_, row) => (

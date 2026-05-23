@@ -9,8 +9,8 @@ export function FinalCTA() {
         <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent,rgba(34,211,238,0.08),transparent)]" />
         <div className="relative mx-auto mb-6 h-24 max-w-lg rounded-full bg-[radial-gradient(circle,rgba(34,211,238,0.34),rgba(124,58,237,0.18),transparent_70%)] blur-xl" />
         <h2 className="relative mx-auto max-w-4xl text-balance text-3xl font-semibold leading-[1.04] text-white sm:text-5xl">
-          Через 14 дней у тебя может быть не папка с записями, а рабочая ссылка,
-          бот, CRM или AI-система.
+          Через 14 дней у тебя может быть не папка с записями, а страница, бот,
+          CRM или путь заявки, который можно показать и тестировать.
         </h2>
         <div className="relative mt-8">
           <MagneticButton href={APPLICATION_URL}>Забронировать место в потоке</MagneticButton>
