@@ -15,12 +15,6 @@ const cardPositions = [
   "left-1/2 bottom-6 -translate-x-1/2",
 ];
 
-const queueRows = [
-  ["RKO lead", "bot", "hot"],
-  ["site + CRM", "brief", "new"],
-  ["shorts", "agent", "draft"],
-];
-
 const premiumEase = [0.22, 1, 0.36, 1] as const;
 
 const heroCopyVariants: Variants = {
@@ -123,10 +117,10 @@ export function Hero() {
               </div>
             </div>
             <div className="space-y-1.5 rounded-md border border-white/10 bg-black/20 p-2 text-left font-mono text-[10px] text-cyan-100">
-              {queueRows.map((row) => (
-                <div key={row.join("-")} className="grid grid-cols-[1fr_auto] gap-2">
-                  <span>{row[0]}</span>
-                  <span className="text-violet-200">{row[2]}</span>
+              {hero.queueRows.map((row) => (
+                <div key={row.name} className="grid grid-cols-[1fr_auto] gap-2">
+                  <span>{row.name}</span>
+                  <span className="text-violet-200">{row.status}</span>
                 </div>
               ))}
             </div>
@@ -231,10 +225,10 @@ export function Hero() {
               <span className="text-cyan-200">live</span>
             </div>
             <div className="space-y-1.5">
-              {queueRows.map((row) => (
-                <div key={row.join("-")} className="grid grid-cols-[1fr_auto] gap-2 rounded-md bg-white/[0.055] px-2 py-1.5 font-mono text-[10px] text-slate-200">
-                  <span>{row[0]}</span>
-                  <span className="text-cyan-200">{row[1]}</span>
+              {hero.queueRows.map((row) => (
+                <div key={row.name} className="grid grid-cols-[1fr_auto] gap-2 rounded-md bg-white/[0.055] px-2 py-1.5 font-mono text-[10px] text-slate-200">
+                  <span>{row.name}</span>
+                  <span className="text-cyan-200">{row.source}</span>
                 </div>
               ))}
             </div>

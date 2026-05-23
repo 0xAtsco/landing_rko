@@ -1,21 +1,19 @@
 import type { Metadata } from "next";
+import { siteMetadata } from "@/lib/content";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "VibeCamp — собери рабочую воронку за 14 дней",
-  description:
-    "Практический спринт: лендинг, Telegram-бот, CRM, контент-система или обработка РКО-заявок под твой оффер, трафик и клиентов.",
+  title: siteMetadata.title,
+  description: siteMetadata.description,
   openGraph: {
-    title: "VibeCamp — собери рабочую воронку за 14 дней",
-    description:
-      "Практический спринт: лендинг, Telegram-бот, CRM, контент-система или обработка РКО-заявок под твой оффер, трафик и клиентов.",
+    title: siteMetadata.title,
+    description: siteMetadata.description,
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "VibeCamp — собери рабочую воронку за 14 дней",
-    description:
-      "Практический спринт: лендинг, Telegram-бот, CRM, контент-система или обработка РКО-заявок.",
+    title: siteMetadata.title,
+    description: siteMetadata.shortDescription,
   },
 };
 
