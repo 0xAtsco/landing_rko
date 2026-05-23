@@ -1,5 +1,11 @@
-<!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
+# Project Rules
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
-<!-- END:nextjs-agent-rules -->
+- VibeCamp = AI Build Sprint, not an abstract AI course.
+- Write simply in Russian: short, specific, human.
+- Do not promise guaranteed income or fixed revenue.
+- Visual direction: dark blue, electric cyan, violet, glass, AI-lab.
+- Use 21st.dev Magic MCP for UI component inspiration/generation when changing key UI sections.
+- Build mobile-first. Telegram traffic is the main context.
+- Keep landing copy in `src/lib/content.ts`.
+- Before final delivery, run `pnpm lint` and `pnpm build`.
+- This project uses a recent Next.js version. Check local Next docs if framework behavior is unclear.
