@@ -31,6 +31,7 @@ export function Header() {
         </div>
         <a
           href={APPLICATION_URL}
+          data-analytics="hero_apply"
           className="rounded-lg border border-cyan-200/30 bg-cyan-200/10 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-200 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 sm:px-4 sm:text-sm"
         >
           Войти в поток

@@ -63,7 +63,7 @@ export function Hero() {
       <div className="mx-auto grid w-full max-w-6xl items-center gap-10 lg:grid-cols-[0.96fr_1.04fr]">
         <motion.div
           variants={heroCopyVariants}
-          initial={reduceMotion ? false : "hidden"}
+          initial={false}
           animate={reduceMotion ? undefined : "visible"}
           className="relative z-10 min-w-0 max-w-full text-center lg:text-left"
         >
@@ -72,17 +72,10 @@ export function Hero() {
             {hero.badge}
           </Badge>
           </motion.div>
-          <h1 className="mx-auto max-w-[calc(100vw-2rem)] text-[2.85rem] font-semibold leading-[0.88] tracking-normal text-white sm:max-w-4xl sm:text-balance sm:text-6xl lg:mx-0 lg:text-[4.85rem] xl:text-[5.15rem]">
-            {hero.titleLines.map((line, index) => (
-              <motion.span
-                key={line}
-                variants={heroItemVariants}
-                className="block drop-shadow-[0_0_22px_rgba(125,211,252,0.12)]"
-                transition={{ delay: index * 0.04 }}
-              >
-                {line}
-              </motion.span>
-            ))}
+          <h1 className="mx-auto max-w-[calc(100vw-2rem)] text-balance text-[2.45rem] font-semibold leading-[0.94] tracking-normal text-white drop-shadow-[0_0_22px_rgba(125,211,252,0.12)] sm:max-w-4xl sm:text-5xl lg:mx-0 lg:text-[4.15rem] xl:text-[4.55rem]">
+            <motion.span variants={heroItemVariants}>
+              {hero.title}
+            </motion.span>
           </h1>
           <motion.p variants={heroItemVariants} className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-8 text-slate-100/90 lg:mx-0 lg:text-xl">
             {hero.subtitle}
@@ -91,8 +84,23 @@ export function Hero() {
             {hero.support}
           </motion.p>
 
+          <motion.div variants={heroItemVariants} className="mx-auto mt-5 max-w-2xl rounded-lg border border-cyan-200/18 bg-[#071a33]/72 p-2 shadow-[inset_0_0_34px_rgba(34,211,238,0.08)] backdrop-blur-xl lg:mx-0">
+            <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] font-medium text-slate-200 sm:text-xs lg:justify-start">
+              {hero.miniFlow.map((step, index) => (
+                <span key={step} className="flex items-center gap-2">
+                  <span className="rounded-md border border-white/10 bg-white/[0.055] px-2.5 py-1.5">
+                    {step}
+                  </span>
+                  {index < hero.miniFlow.length - 1 ? (
+                    <span className="text-cyan-200">→</span>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          </motion.div>
+
           <motion.div variants={heroItemVariants} className="mt-7 flex flex-col items-stretch gap-3 sm:flex-row sm:justify-center lg:justify-start">
-            <MagneticButton href={APPLICATION_URL}>{hero.primaryCta}</MagneticButton>
+            <MagneticButton href={APPLICATION_URL} analytics="hero_apply">{hero.primaryCta}</MagneticButton>
             <MagneticButton href="#builds" variant="secondary">
               {hero.secondaryCta}
             </MagneticButton>
@@ -129,7 +137,7 @@ export function Hero() {
 
         <motion.div
           variants={consoleVariants}
-          initial={reduceMotion ? false : "hidden"}
+          initial={false}
           animate={reduceMotion ? undefined : "visible"}
           className="relative mx-auto hidden h-[500px] min-w-0 w-full max-w-[610px] sm:block lg:h-[600px]"
         >

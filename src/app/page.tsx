@@ -1,4 +1,5 @@
 import { BentoBuilds } from "@/components/landing/BentoBuilds";
+import { AfterApply } from "@/components/landing/AfterApply";
 import { Cases } from "@/components/landing/Cases";
 import { CursorGlow } from "@/components/landing/CursorGlow";
 import { DemandProof } from "@/components/landing/DemandProof";
@@ -10,7 +11,9 @@ import { Header } from "@/components/landing/Header";
 import { Hero } from "@/components/landing/Hero";
 import { Pricing } from "@/components/landing/Pricing";
 import { SignalDivider } from "@/components/landing/SignalDivider";
+import { TeamBuild } from "@/components/landing/TeamBuild";
 import { Timeline } from "@/components/landing/Timeline";
+import { Tracks } from "@/components/landing/Tracks";
 import { WhyNow } from "@/components/landing/WhyNow";
 
 export default function Home() {
@@ -21,8 +24,10 @@ export default function Home() {
       <Hero />
       <SignalDivider />
       <DemandProof />
+      <TeamBuild />
       <SignalDivider flip />
       <BentoBuilds />
+      <Tracks />
       <Cases />
       <SignalDivider />
       <WhyNow />
@@ -30,6 +35,7 @@ export default function Home() {
       <Format />
       <ForWhom />
       <SignalDivider flip />
+      <AfterApply />
       <Pricing />
       <FAQ />
       <FinalCTA />

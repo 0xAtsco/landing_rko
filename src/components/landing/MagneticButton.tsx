@@ -9,12 +9,14 @@ type MagneticButtonProps = PropsWithChildren<{
   href: string;
   variant?: "primary" | "secondary";
   className?: string;
+  analytics?: string;
 }>;
 
 export function MagneticButton({
   href,
   variant = "primary",
   className,
+  analytics,
   children,
 }: MagneticButtonProps) {
   const reduceMotion = useReducedMotion();
@@ -42,6 +44,7 @@ export function MagneticButton({
   return (
     <motion.a
       href={href}
+      data-analytics={analytics}
       onMouseMove={onMouseMove}
       onMouseLeave={reset}
       style={{ x: springX, y: springY }}

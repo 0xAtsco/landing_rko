@@ -12,7 +12,7 @@ export function FinalCTA() {
           {finalCta.title}
         </h2>
         <div className="relative mt-8">
-          <MagneticButton href={APPLICATION_URL}>{finalCta.cta}</MagneticButton>
+          <MagneticButton href={APPLICATION_URL} analytics="pricing_apply">{finalCta.cta}</MagneticButton>
         </div>
       </div>
     </SectionReveal>

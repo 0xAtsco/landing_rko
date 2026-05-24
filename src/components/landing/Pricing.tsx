@@ -16,10 +16,11 @@ export function Pricing() {
               {pricingSection.badge}
             </span>
             <h2 className="mt-5 text-3xl font-semibold leading-[1.02] text-white sm:text-5xl">{pricingSection.title}</h2>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300">{pricingSection.description}</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <MagneticButton href={APPLICATION_URL}>{pricingSection.primaryCta}</MagneticButton>
-            <MagneticButton href={TELEGRAM_URL} variant="secondary">
+            <MagneticButton href={APPLICATION_URL} analytics="pricing_apply">{pricingSection.primaryCta}</MagneticButton>
+            <MagneticButton href={TELEGRAM_URL} variant="secondary" analytics="telegram_click">
               {pricingSection.secondaryCta}
             </MagneticButton>
           </div>

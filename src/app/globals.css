@@ -148,6 +148,8 @@
     radial-gradient(circle at 82% 18%, rgba(124, 58, 237, 0.17), transparent 24rem),
     radial-gradient(circle at 50% 62%, rgba(8, 47, 73, 0.42), transparent 35rem),
     linear-gradient(180deg, #020817 0%, #04101f 42%, #020817 100%);
+  background-size: 120% 120%, 130% 130%, 140% 140%, 100% 100%;
+  animation: lab-gradient-shift 18s ease-in-out infinite alternate;
 }
 
 .lab-shell::before {
@@ -231,6 +233,15 @@
 @keyframes shader-spin {
   to {
     rotate: 360deg;
+  }
+}
+
+@keyframes lab-gradient-shift {
+  from {
+    background-position: 0% 0%, 100% 0%, 50% 60%, 0 0;
+  }
+  to {
+    background-position: 6% 3%, 94% 8%, 52% 66%, 0 0;
   }
 }
 
