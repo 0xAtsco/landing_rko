@@ -368,8 +368,8 @@ Badge:
 
 Ссылки CTA пока сделай переменными/константами в content:
 APPLICATION_URL = "#apply"
-TELEGRAM_URL = "https://t.me/REPLACE_ME"
-Не хардкодь реальные личные контакты, если их нет.
+TELEGRAM_URL = "https://t.me/lv3rson"
+TODO: verify username spelling before launch: lv3rson vs Iv3rson.
 
 11. FAQ
 Сделай красивый accordion.

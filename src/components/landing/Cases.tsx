@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import { APPLICATION_URL, cases, casesSection } from "@/lib/content";
 import { SectionReveal } from "./SectionReveal";
@@ -24,7 +25,7 @@ export function Cases() {
               viewport={{ once: true, margin: "-80px" }}
               transition={{ duration: 0.55, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
               whileHover={reduceMotion ? undefined : { y: -8, scale: 1.01 }}
-              className="group relative flex min-h-[620px] flex-col overflow-hidden rounded-lg border border-white/10 bg-[#07172d]/82 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.24)] backdrop-blur-xl transition hover:border-cyan-200/30 hover:shadow-[0_28px_110px_rgba(34,211,238,0.16)]"
+              className="group relative flex min-h-[720px] flex-col overflow-hidden rounded-lg border border-white/10 bg-[#07172d]/82 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.24)] backdrop-blur-xl transition hover:border-cyan-200/30 hover:shadow-[0_28px_110px_rgba(34,211,238,0.16)]"
             >
               <div className="absolute inset-0 bg-gradient-to-br from-cyan-300/10 via-transparent to-violet-400/14 opacity-75" />
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-200/50 to-transparent opacity-0 transition group-hover:opacity-100" />
@@ -40,8 +41,20 @@ export function Cases() {
                   </span>
                 </div>
 
-                <div className="mb-5 rounded-lg border border-white/10 bg-black/24 p-3 shadow-[inset_0_0_30px_rgba(34,211,238,0.05)]">
-                  <CaseMockup type={item.visual} />
+                <div className="mb-5 overflow-hidden rounded-lg border border-white/10 bg-black/24 p-2 shadow-[inset_0_0_30px_rgba(34,211,238,0.05)]">
+                  {item.image.length > 0 ? (
+                    <Image
+                      src={item.image}
+                      alt={item.imageAlt}
+                      width={1600}
+                      height={1000}
+                      sizes="(min-width: 1280px) 360px, (min-width: 768px) 50vw, 100vw"
+                      className="aspect-[16/10] w-full rounded-md object-cover shadow-[0_18px_70px_rgba(34,211,238,0.12)] transition duration-500 group-hover:-translate-y-1 group-hover:scale-[1.015]"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <CaseMockup type={item.visual} />
+                  )}
                 </div>
 
                 <span className="w-fit rounded-lg border border-cyan-200/20 bg-cyan-200/10 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-cyan-100">

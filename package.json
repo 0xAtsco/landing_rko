@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "generate:assets": "node scripts/generate-assets.mjs",
     "start": "next start",
     "lint": "eslint"
   },

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Variants } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
@@ -117,6 +118,18 @@ export function Hero() {
             ))}
           </motion.div>
 
+          <motion.div variants={heroItemVariants} className="mx-auto mt-5 overflow-hidden rounded-lg border border-cyan-200/18 bg-black/24 p-1 shadow-[0_24px_80px_rgba(34,211,238,0.12)] sm:hidden">
+            <Image
+              src="/generated/hero-command-center.png"
+              alt="Демо-макет операционного центра AI-воронки: трафик, лендинг, Telegram-бот, CRM и менеджер"
+              width={1800}
+              height={1200}
+              sizes="100vw"
+              className="aspect-[3/2] max-h-48 w-full rounded-md object-cover"
+              priority
+            />
+          </motion.div>
+
           <motion.div variants={heroItemVariants} className="mx-auto mt-4 grid max-w-sm grid-cols-[0.7fr_1fr] gap-2 rounded-lg border border-cyan-200/18 bg-[#071a33]/74 p-2 shadow-[inset_0_0_40px_rgba(34,211,238,0.08)] backdrop-blur-xl sm:hidden">
             <div className="relative grid min-h-20 place-items-center overflow-hidden rounded-md border border-cyan-200/14 bg-black/20">
               <div className="radar-sweep absolute inset-3 rounded-full opacity-80" />
@@ -141,6 +154,17 @@ export function Hero() {
           animate={reduceMotion ? undefined : "visible"}
           className="relative mx-auto hidden h-[500px] min-w-0 w-full max-w-[610px] sm:block lg:h-[600px]"
         >
+          <div className="absolute inset-4 overflow-hidden rounded-[1.6rem] border border-cyan-200/18 bg-black/28 shadow-[0_34px_120px_rgba(0,0,0,0.42)]">
+            <Image
+              src="/generated/hero-command-center.png"
+              alt="Демо-макет операционного центра AI-воронки: трафик, лендинг, Telegram-бот, CRM и менеджер"
+              width={1800}
+              height={1200}
+              sizes="(min-width: 1024px) 610px, 100vw"
+              className="h-full w-full object-cover opacity-80"
+              priority
+            />
+          </div>
           <motion.div
             initial={reduceMotion ? false : { clipPath: "inset(48% 48% 48% 48%)", opacity: 0 }}
             animate={reduceMotion ? undefined : { clipPath: "inset(0% 0% 0% 0%)", opacity: 1 }}

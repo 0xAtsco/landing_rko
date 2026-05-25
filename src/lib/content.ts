@@ -1,7 +1,7 @@
 export const APPLICATION_URL = "#apply";
 export const START_DATE = "21 июня";
-// TODO: replace TELEGRAM_URL before launch.
-export const TELEGRAM_URL = "https://t.me/REPLACE_ME";
+// TODO: verify username spelling before launch: lv3rson vs Iv3rson.
+export const TELEGRAM_URL = "https://t.me/lv3rson";
 
 export type PreviewKind = "landing" | "bot" | "crm" | "agent" | "content" | "shorts" | "rko" | "mvp";
 
@@ -24,6 +24,8 @@ export type CaseItem = Readonly<{
   output: string;
   text: string;
   visual: "telegram" | "sales" | "shorts" | "rko" | "crm" | "business";
+  image: string;
+  imageAlt: string;
 }>;
 
 export type CardCopy = Readonly<{
@@ -222,6 +224,8 @@ export const cases = [
     output: "Канал → прогрев → бот → заявка → таблица → менеджер",
     text: "Контент не живёт отдельно от продаж: темы постов, прогрев, бот и заявки связаны в один путь.",
     visual: "telegram",
+    image: "/generated/case-telegram-funnel.png",
+    imageAlt: "Демо-макет Telegram-воронки: канал, бот и мини-CRM с тестовыми лидами",
   },
   {
     title: "AI-помощники для менеджеров продаж",
@@ -231,6 +235,8 @@ export const cases = [
     output: "Лид → квалификация → статус → напоминание → следующий шаг",
     text: "Система показывает, где лид застрял, что ему ответить и какой следующий шаг.",
     visual: "sales",
+    image: "/generated/case-sales-agents.png",
+    imageAlt: "Демо-макет CRM-kanban и панели AI-помощника для менеджеров продаж",
   },
   {
     title: "Shorts / Reels factory под оффер",
@@ -240,6 +246,8 @@ export const cases = [
     output: "Идея → хук → сценарий → описание → публикация → анализ",
     text: "Не один ролик, а система, где можно быстро тестировать темы, хуки и форматы.",
     visual: "shorts",
+    image: "/generated/case-shorts-factory.png",
+    imageAlt: "Демо-макет Shorts/Reels factory с вертикальными карточками, таблицей и расписанием",
   },
   {
     title: "РКО-заявка без хаоса",
@@ -249,6 +257,8 @@ export const cases = [
     output: "Пост/реклама → лендинг → бот → CRM → менеджер",
     text: "РКО-лид не теряется после клика: бот собирает данные, менеджер видит статус и следующий шаг.",
     visual: "rko",
+    image: "/generated/case-rko-pipeline.png",
+    imageAlt: "Демо-макет RKO lead pipeline: пост, лендинг, Telegram-бот, CRM и менеджер",
   },
   {
     title: "Своя мини-CRM под процесс",
@@ -258,6 +268,8 @@ export const cases = [
     output: "Один экран, где видно всех лидов и следующий шаг по каждому.",
     text: "Не большая CRM на полгода, а простой рабочий экран под твой процесс.",
     visual: "crm",
+    image: "/generated/case-custom-crm.png",
+    imageAlt: "Демо-макет мини-CRM с таблицей лидов, фильтрами, статусами и статистикой",
   },
   {
     title: "Сайт-визитка для доверия",
@@ -267,6 +279,8 @@ export const cases = [
     output: "Ссылка, которую можно отправить клиенту, партнёру или использовать в заявке.",
     text: "Страница объясняет, чем занимается бизнес, как оставить заявку и почему вам можно доверять.",
     visual: "business",
+    image: "/generated/case-business-landing.png",
+    imageAlt: "Демо-макет сайта-визитки с desktop и mobile preview, формой и блоками доверия",
   },
 ] as const satisfies readonly CaseItem[];
 
