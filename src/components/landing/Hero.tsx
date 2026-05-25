@@ -7,15 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { APPLICATION_URL, hero } from "@/lib/content";
 import { MagneticButton } from "./MagneticButton";
 
-const cardPositions = [
-  "left-2 top-8",
-  "right-0 top-24",
-  "left-0 bottom-28",
-  "right-3 bottom-24",
-  "left-1/2 top-0 -translate-x-1/2",
-  "left-1/2 bottom-6 -translate-x-1/2",
-];
-
+const heroVisualSrc = "/generated/hero-command-center-v2.png";
 const premiumEase = [0.22, 1, 0.36, 1] as const;
 
 const heroCopyVariants: Variants = {
@@ -120,7 +112,7 @@ export function Hero() {
 
           <motion.div variants={heroItemVariants} className="mx-auto mt-5 overflow-hidden rounded-lg border border-cyan-200/18 bg-black/24 p-1 shadow-[0_24px_80px_rgba(34,211,238,0.12)] sm:hidden">
             <Image
-              src="/generated/hero-command-center.png"
+              src={heroVisualSrc}
               alt="Демо-макет операционного центра AI-воронки: трафик, лендинг, Telegram-бот, CRM и менеджер"
               width={1800}
               height={1200}
@@ -130,140 +122,24 @@ export function Hero() {
             />
           </motion.div>
 
-          <motion.div variants={heroItemVariants} className="mx-auto mt-4 grid max-w-sm grid-cols-[0.7fr_1fr] gap-2 rounded-lg border border-cyan-200/18 bg-[#071a33]/74 p-2 shadow-[inset_0_0_40px_rgba(34,211,238,0.08)] backdrop-blur-xl sm:hidden">
-            <div className="relative grid min-h-20 place-items-center overflow-hidden rounded-md border border-cyan-200/14 bg-black/20">
-              <div className="radar-sweep absolute inset-3 rounded-full opacity-80" />
-              <div className="grid size-12 place-items-center rounded-full border border-cyan-200/30 bg-cyan-200/10 shadow-[0_0_34px_rgba(34,211,238,0.32)]">
-                <div className="size-5 rounded-full bg-cyan-200 shadow-[0_0_24px_rgba(103,232,249,0.9)]" />
-              </div>
-            </div>
-            <div className="space-y-1.5 rounded-md border border-white/10 bg-black/20 p-2 text-left font-mono text-[10px] text-cyan-100">
-              {hero.queueRows.map((row) => (
-                <div key={row.name} className="grid grid-cols-[1fr_auto] gap-2">
-                  <span>{row.name}</span>
-                  <span className="text-violet-200">{row.status}</span>
-                </div>
-              ))}
-            </div>
-          </motion.div>
         </motion.div>
 
         <motion.div
           variants={consoleVariants}
           initial={false}
           animate={reduceMotion ? undefined : "visible"}
-          className="relative mx-auto hidden h-[500px] min-w-0 w-full max-w-[610px] sm:block lg:h-[600px]"
+          className="relative mx-auto hidden aspect-[3/2] min-w-0 w-full max-w-[660px] sm:block"
         >
-          <div className="absolute inset-4 overflow-hidden rounded-[1.6rem] border border-cyan-200/18 bg-black/28 shadow-[0_34px_120px_rgba(0,0,0,0.42)]">
+          <div className="absolute inset-0 overflow-hidden rounded-[1.6rem] border border-cyan-200/18 bg-black/28 shadow-[0_34px_120px_rgba(0,0,0,0.42),0_0_90px_rgba(34,211,238,0.12)]">
             <Image
-              src="/generated/hero-command-center.png"
+              src={heroVisualSrc}
               alt="Демо-макет операционного центра AI-воронки: трафик, лендинг, Telegram-бот, CRM и менеджер"
               width={1800}
               height={1200}
               sizes="(min-width: 1024px) 610px, 100vw"
-              className="h-full w-full object-cover opacity-80"
+              className="h-full w-full object-cover"
               priority
             />
-          </div>
-          <motion.div
-            initial={reduceMotion ? false : { clipPath: "inset(48% 48% 48% 48%)", opacity: 0 }}
-            animate={reduceMotion ? undefined : { clipPath: "inset(0% 0% 0% 0%)", opacity: 1 }}
-            transition={{ duration: 0.9, delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute inset-4 rounded-[1.6rem] border border-cyan-200/15 bg-[#041326]/72 shadow-[inset_0_0_80px_rgba(34,211,238,0.1),0_34px_120px_rgba(0,0,0,0.42)] backdrop-blur-md"
-          />
-          <motion.div
-            initial={reduceMotion ? false : { opacity: 0, y: -12 }}
-            animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-            transition={{ duration: 0.55, delay: 0.8 }}
-            className="absolute inset-x-16 top-12 flex items-center justify-between rounded-lg border border-white/10 bg-black/22 px-4 py-3 font-mono text-[11px] text-slate-300"
-          >
-            <span className="text-cyan-100">traffic.ops/live</span>
-            <span className="text-emerald-300">signal stable</span>
-            <span className="text-violet-200">14d sprint</span>
-          </motion.div>
-
-          <motion.div
-            initial={reduceMotion ? false : { opacity: 0, scale: 0.38 }}
-            animate={reduceMotion ? undefined : { opacity: 1, scale: 1 }}
-            transition={{ duration: 0.75, delay: 0.45, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute left-[47%] top-[47%] grid size-52 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-cyan-200/25 bg-[#06172f]/80 shadow-[0_0_90px_rgba(34,211,238,0.38)] lg:size-64"
-          >
-            <div className="radar-sweep absolute inset-3 rounded-full opacity-80" />
-            <div className="absolute inset-5 rounded-full border border-violet-300/20" />
-            <div className="absolute inset-12 rounded-full border border-cyan-200/30" />
-            <div className="relative grid size-20 place-items-center rounded-full bg-cyan-200/85 shadow-[0_0_48px_rgba(103,232,249,0.95)]">
-              <span className="size-2 rounded-full bg-slate-950/80" />
-            </div>
-          </motion.div>
-          <svg aria-hidden="true" className="absolute inset-0 h-full w-full">
-            <defs>
-              <linearGradient id="heroLine" x1="0" x2="1">
-                <stop offset="0%" stopColor="#67e8f9" stopOpacity=".15" />
-                <stop offset="50%" stopColor="#a78bfa" stopOpacity=".8" />
-                <stop offset="100%" stopColor="#38bdf8" stopOpacity=".15" />
-              </linearGradient>
-            </defs>
-            {cardPositions.map((_, index) => (
-              <line
-                key={index}
-                x1="50%"
-                y1="50%"
-                x2={`${index % 2 === 0 ? 20 : 82}%`}
-                y2={`${18 + index * 12}%`}
-                stroke="url(#heroLine)"
-                strokeWidth="1"
-                strokeDasharray="6 8"
-                className="signal-flow"
-              />
-            ))}
-          </svg>
-
-          {hero.floatingCards.map((card, index) => (
-            <motion.div
-              key={card}
-              initial={reduceMotion ? false : { opacity: 0, scale: 0.7, y: index % 2 ? 18 : -18 }}
-              animate={reduceMotion ? undefined : { opacity: 1, scale: 1, y: [0, index % 2 ? -10 : 10, 0] }}
-              transition={
-                reduceMotion
-                  ? undefined
-                  : {
-                      opacity: { duration: 0.45, delay: 0.65 + index * 0.08 },
-                      scale: { duration: 0.45, delay: 0.65 + index * 0.08 },
-                      y: { duration: 5 + index * 0.35, repeat: Infinity, ease: "easeInOut", delay: 1 + index * 0.08 },
-                    }
-              }
-              className={`absolute ${cardPositions[index]} w-[132px] rounded-lg border border-white/12 bg-[#071a33]/84 p-3 text-left shadow-[0_18px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:w-[160px]`}
-            >
-              <div className="mb-2 h-1 w-10 rounded-full bg-cyan-300/80" />
-              <div className="text-sm font-semibold text-white">{card}</div>
-              <div className="mt-2 flex gap-1.5">
-                <span className="h-1.5 flex-1 rounded-full bg-white/15" />
-                <span className="h-1.5 flex-1 rounded-full bg-cyan-200/45" />
-              </div>
-            </motion.div>
-          ))}
-
-          <div className="absolute bottom-20 left-1/2 w-[min(92%,390px)] -translate-x-1/2 rounded-lg border border-cyan-200/20 bg-black/50 p-3 font-mono text-xs text-cyan-100 shadow-[0_0_32px_rgba(34,211,238,0.16)] backdrop-blur-xl">
-            <span className="text-violet-300">vibecamp</span>
-            <span className="text-slate-500"> $ </span>
-            <span className="typewriter inline-block align-bottom">
-              {hero.commands.join("  ")}
-            </span>
-          </div>
-
-          <div className="absolute bottom-8 right-10 w-52 rounded-lg border border-white/10 bg-black/28 p-3 backdrop-blur-xl">
-            <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[0.18em] text-slate-400">
-              <span>lead queue</span>
-              <span className="text-cyan-200">live</span>
-            </div>
-            <div className="space-y-1.5">
-              {hero.queueRows.map((row) => (
-                <div key={row.name} className="grid grid-cols-[1fr_auto] gap-2 rounded-md bg-white/[0.055] px-2 py-1.5 font-mono text-[10px] text-slate-200">
-                  <span>{row.name}</span>
-                  <span className="text-cyan-200">{row.source}</span>
-                </div>
-              ))}
-            </div>
           </div>
         </motion.div>
       </div>

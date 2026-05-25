@@ -1,10 +1,10 @@
 import { AssetFrame, GlassPanel, StatusPill, WindowDots } from "../AssetFrame";
 
 const nodes = [
-  { label: "Post / Traffic", x: "16%", y: "26%" },
-  { label: "Landing", x: "28%", y: "70%" },
-  { label: "Telegram Bot", x: "68%", y: "24%" },
-  { label: "CRM", x: "76%", y: "68%" },
+  { label: "Post / Traffic", x: "19%", y: "42%" },
+  { label: "Landing", x: "30%", y: "72%" },
+  { label: "Telegram Bot", x: "70%", y: "38%" },
+  { label: "CRM", x: "78%", y: "70%" },
   { label: "Manager", x: "50%", y: "84%" },
 ];
 
@@ -19,16 +19,21 @@ export function HeroCommandCenterMockup() {
   return (
     <AssetFrame kind="hero" label="VibeCamp command center">
       <div className="absolute inset-20">
-        <div className="absolute inset-x-0 top-8 flex items-center justify-between">
+        <div className="absolute inset-x-0 top-8 flex items-start justify-between gap-10">
           <div>
-            <div className="mb-6 flex gap-3">
+            <div className="mb-5 flex gap-3">
               <StatusPill>AI Build Sprint</StatusPill>
               <StatusPill tone="violet">14 days</StatusPill>
               <StatusPill tone="green">workflow live</StatusPill>
             </div>
-            <h1 className="max-w-[820px] text-[88px] font-semibold leading-[0.95] tracking-normal text-white">
-              AI-воронка под РКО, Telegram и заявки
-            </h1>
+            <GlassPanel className="w-[520px] p-6">
+              <div className="font-mono text-sm uppercase tracking-[0.2em] text-cyan-100/80">
+                Telegram traffic command center
+              </div>
+              <div className="mt-4 text-4xl font-semibold leading-tight text-white">
+                Пост / реклама → лендинг → бот → CRM → менеджер
+              </div>
+            </GlassPanel>
           </div>
           <GlassPanel className="w-[470px] p-7">
             <div className="mb-6 flex items-center justify-between">
@@ -60,7 +65,7 @@ export function HeroCommandCenterMockup() {
             ))}
           </svg>
 
-          <div className="absolute left-1/2 top-[48%] grid size-[310px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-cyan-200/35 bg-[#06172f]/84 shadow-[0_0_130px_rgba(34,211,238,0.52)]">
+          <div className="absolute left-1/2 top-[52%] grid size-[310px] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-cyan-200/35 bg-[#06172f]/84 shadow-[0_0_130px_rgba(34,211,238,0.52)]">
             <div className="absolute inset-5 rounded-full border border-violet-300/25" />
             <div className="absolute inset-16 rounded-full border border-cyan-200/30" />
             <div className="absolute size-[430px] rounded-full bg-[conic-gradient(from_0deg,transparent,rgba(103,232,249,0.34),transparent_26%)]" />

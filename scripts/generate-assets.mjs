@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { access, mkdir, stat, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const root = process.cwd();
@@ -8,7 +8,7 @@ let baseUrl = process.env.ASSET_STUDIO_URL || "http://127.0.0.1:3000";
 const chromePath = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 const assets = [
-  { key: "hero", file: "hero-command-center.png", width: 1800, height: 1200 },
+  { key: "hero", file: "hero-command-center.png", aliases: ["hero-command-center-v2.png"], width: 1800, height: 1200 },
   { key: "telegram-funnel", file: "case-telegram-funnel.png", width: 1600, height: 1000 },
   { key: "rko-pipeline", file: "case-rko-pipeline.png", width: 1600, height: 1000 },
   { key: "sales-agents", file: "case-sales-agents.png", width: 1600, height: 1000 },
@@ -109,6 +109,12 @@ async function main() {
       const info = await stat(filePath);
       generated.push({ file: asset.file, size: info.size });
       console.log(`generated ${asset.file} (${Math.round(info.size / 1024)} KB)`);
+      for (const alias of asset.aliases ?? []) {
+        const aliasPath = resolve(outputDir, alias);
+        await copyFile(filePath, aliasPath);
+        generated.push({ file: alias, size: info.size });
+        console.log(`generated ${alias} (${Math.round(info.size / 1024)} KB)`);
+      }
     }
   } finally {
     await browser.close();
