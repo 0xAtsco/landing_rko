@@ -30,9 +30,9 @@ export function Timeline() {
               <span>sprint route</span>
               <span className="text-cyan-200">результат</span>
             </div>
-            <div className="grid grid-cols-7 gap-1.5" aria-hidden="true">
+            <div className="grid grid-cols-8 gap-1.5" aria-hidden="true">
               {timelineSection.items.map((item, index) => (
-                <span key={item.step} className={index === 6 ? "h-10 rounded-sm border border-cyan-200/50 bg-cyan-300/45" : "h-10 rounded-sm border border-white/8 bg-white/[0.06]"} />
+                <span key={item.step} className={index === timelineSection.items.length - 1 ? "h-10 rounded-sm border border-cyan-200/50 bg-cyan-300/45" : "h-10 rounded-sm border border-white/8 bg-white/[0.06]"} />
               ))}
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { CheckCircle2, Send } from "lucide-react";
+import { CheckCircle2, CreditCard, Send } from "lucide-react";
 import { APPLICATION_URL, TELEGRAM_URL, pricingSection } from "@/lib/content";
 import { SectionReveal } from "./SectionReveal";
 import { MagneticButton } from "./MagneticButton";
@@ -22,6 +22,27 @@ export function Pricing() {
             <MagneticButton href={APPLICATION_URL} analytics="pricing_apply">{pricingSection.primaryCta}</MagneticButton>
             <MagneticButton href={TELEGRAM_URL} variant="secondary" analytics="telegram_click">
               {pricingSection.secondaryCta}
+            </MagneticButton>
+          </div>
+        </div>
+
+        <div className="relative z-10 mb-5 overflow-hidden rounded-lg border border-emerald-200/35 bg-[linear-gradient(135deg,rgba(16,185,129,0.18),rgba(34,211,238,0.12),rgba(168,85,247,0.12))] p-4 shadow-[0_0_54px_rgba(16,185,129,0.16)] sm:p-5">
+          <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-200/80 to-transparent" />
+          <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="grid size-11 shrink-0 place-items-center rounded-md border border-emerald-200/30 bg-emerald-200/14 text-emerald-100">
+                <CreditCard className="size-5" aria-hidden="true" />
+              </div>
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-100">
+                  {pricingSection.installment.label}
+                </span>
+                <h3 className="mt-1 text-2xl font-semibold text-white">{pricingSection.installment.title}</h3>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-emerald-50/85">{pricingSection.installment.text}</p>
+              </div>
+            </div>
+            <MagneticButton href={TELEGRAM_URL} variant="secondary" analytics="installment_click">
+              Узнать рассрочку
             </MagneticButton>
           </div>
         </div>
