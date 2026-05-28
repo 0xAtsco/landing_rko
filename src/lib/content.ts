@@ -1,6 +1,5 @@
 export const APPLICATION_URL = "#apply";
 export const START_DATE = "21 июня";
-// TODO: verify username spelling before launch: lv3rson vs Iv3rson.
 export const TELEGRAM_URL = "https://t.me/lv3rson";
 
 export type PreviewKind = "landing" | "bot" | "crm" | "agent" | "content" | "shorts" | "rko" | "mvp";
