@@ -1,6 +1,27 @@
 import type { Metadata } from "next";
+import { Geologica, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import { siteMetadata } from "@/lib/content";
 import "./globals.css";
+
+const geologica = Geologica({
+  subsets: ["latin", "cyrillic"],
+  display: "swap",
+  variable: "--font-geologica",
+});
+
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  variable: "--font-plex-sans",
+});
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin", "cyrillic"],
+  weight: ["400", "500", "600"],
+  display: "swap",
+  variable: "--font-plex-mono",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://vibecamp.ai"),
@@ -35,7 +56,7 @@ export default function RootLayout({
   return (
     <html
       lang="ru"
-      className="h-full antialiased"
+      className={`h-full antialiased ${geologica.variable} ${plexSans.variable} ${plexMono.variable}`}
     >
       <body className="min-h-full overflow-x-hidden bg-[#020817]">{children}</body>
     </html>

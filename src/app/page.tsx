@@ -9,6 +9,7 @@ import { ForWhom } from "@/components/landing/ForWhom";
 import { Format } from "@/components/landing/Format";
 import { Header } from "@/components/landing/Header";
 import { Hero } from "@/components/landing/Hero";
+import { MotionBudgetController } from "@/components/landing/MotionBudgetController";
 import { Pricing } from "@/components/landing/Pricing";
 import { SignalDivider } from "@/components/landing/SignalDivider";
 import { TeamBuild } from "@/components/landing/TeamBuild";
@@ -19,6 +20,7 @@ import { WhyNow } from "@/components/landing/WhyNow";
 export default function Home() {
   return (
     <main className="lab-shell min-h-screen overflow-x-clip bg-[#020817] text-white">
+      <MotionBudgetController />
       <CursorGlow />
       <Header />
       <Hero />

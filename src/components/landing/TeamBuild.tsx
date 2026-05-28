@@ -1,6 +1,3 @@
-"use client";
-
-import { motion, useReducedMotion } from "framer-motion";
 import { CircuitBoard, Compass, LifeBuoy } from "lucide-react";
 import { teamCards } from "@/lib/content";
 import { SectionReveal } from "./SectionReveal";
@@ -8,8 +5,6 @@ import { SectionReveal } from "./SectionReveal";
 const icons = [Compass, CircuitBoard, LifeBuoy];
 
 export function TeamBuild() {
-  const reduceMotion = useReducedMotion();
-
   return (
     <SectionReveal className="relative px-4 py-20 sm:px-6">
       <div aria-hidden="true" className="absolute inset-x-0 top-10 h-48 bg-[radial-gradient(circle_at_50%_40%,rgba(34,211,238,0.1),transparent_34rem)]" />
@@ -28,14 +23,9 @@ export function TeamBuild() {
             const Icon = icons[index];
 
             return (
-              <motion.article
+              <article
                 key={card.title}
-                initial={reduceMotion ? false : { opacity: 0, y: 28 }}
-                whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-80px" }}
-                transition={{ duration: 0.55, delay: index * 0.07, ease: [0.22, 1, 0.36, 1] }}
-                whileHover={reduceMotion ? undefined : { y: -6 }}
-                className="group relative overflow-hidden rounded-lg border border-white/10 bg-[#07172d]/82 p-5 shadow-[0_24px_80px_rgba(0,0,0,0.24)] backdrop-blur-xl"
+                className="group relative overflow-hidden rounded-lg border border-white/10 bg-[#07172d]/82 p-5 shadow-[0_18px_60px_rgba(0,0,0,0.2)] transition motion-safe:hover:-translate-y-1 md:backdrop-blur-md"
               >
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(34,211,238,0.16),transparent_22rem),radial-gradient(circle_at_92%_100%,rgba(124,58,237,0.16),transparent_20rem)] opacity-80" />
                 <div className="relative z-10">
@@ -57,7 +47,7 @@ export function TeamBuild() {
                   <h3 className="text-xl font-semibold text-white">{card.title}</h3>
                   <p className="mt-3 text-sm leading-6 text-slate-300">{card.text}</p>
                 </div>
-              </motion.article>
+              </article>
             );
           })}
         </div>

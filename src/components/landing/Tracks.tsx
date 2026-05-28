@@ -1,6 +1,3 @@
-"use client";
-
-import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight, BriefcaseBusiness, RadioTower, WalletCards } from "lucide-react";
 import { tracks } from "@/lib/content";
 import { SectionReveal } from "./SectionReveal";
@@ -8,8 +5,6 @@ import { SectionReveal } from "./SectionReveal";
 const icons = [WalletCards, RadioTower, BriefcaseBusiness];
 
 export function Tracks() {
-  const reduceMotion = useReducedMotion();
-
   return (
     <SectionReveal className="relative px-4 py-16 sm:px-6">
       <div className="mx-auto max-w-6xl">
@@ -32,13 +27,9 @@ export function Tracks() {
             const Icon = icons[index];
 
             return (
-              <motion.article
+              <article
                 key={track.title}
-                initial={reduceMotion ? false : { opacity: 0, y: 24 }}
-                whileInView={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-80px" }}
-                transition={{ duration: 0.5, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
-                className="group relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl transition hover:border-cyan-200/30 hover:bg-cyan-200/[0.055]"
+                className="group relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.045] p-5 transition motion-safe:hover:-translate-y-1 hover:border-cyan-200/30 hover:bg-cyan-200/[0.055] md:backdrop-blur-md"
               >
                 <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/50 to-transparent opacity-0 transition group-hover:opacity-100" />
                 <div className="mb-5 flex items-center justify-between">
@@ -49,7 +40,7 @@ export function Tracks() {
                 </div>
                 <h3 className="text-xl font-semibold text-white">{track.title}</h3>
                 <p className="mt-3 text-sm leading-6 text-slate-300">{track.text}</p>
-              </motion.article>
+              </article>
             );
           })}
         </div>

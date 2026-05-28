@@ -1,15 +1,10 @@
-"use client";
-
 import Image from "next/image";
-import { motion, useReducedMotion } from "framer-motion";
 import { APPLICATION_URL, cases, casesSection } from "@/lib/content";
 import { SectionReveal } from "./SectionReveal";
 import { MagneticButton } from "./MagneticButton";
 import { SectionHeading } from "./SectionPrimitives";
 
 export function Cases() {
-  const reduceMotion = useReducedMotion();
-
   return (
     <SectionReveal id="cases" className="relative px-4 py-20 sm:px-6">
       <div aria-hidden="true" className="absolute left-0 top-24 h-72 w-full bg-[radial-gradient(circle_at_70%_35%,rgba(124,58,237,0.14),transparent_34rem)]" />
@@ -18,16 +13,14 @@ export function Cases() {
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {cases.map((item, index) => (
-            <motion.article
+            <article
               key={item.title}
-              initial={reduceMotion ? false : { opacity: 0, y: 34, rotateX: 5 }}
-              whileInView={reduceMotion ? undefined : { opacity: 1, y: 0, rotateX: 0 }}
-              viewport={{ once: true, margin: "-80px" }}
-              transition={{ duration: 0.55, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
-              whileHover={reduceMotion ? undefined : { y: -8, scale: 1.01 }}
-              className="group relative flex min-h-[720px] flex-col overflow-hidden rounded-lg border border-white/10 bg-[#07172d]/82 p-4 shadow-[0_24px_90px_rgba(0,0,0,0.24)] backdrop-blur-xl transition hover:border-cyan-200/30 hover:shadow-[0_28px_110px_rgba(34,211,238,0.16)]"
+              data-reveal
+              data-hover-glow
+              className="group motion-tilt-card relative flex min-h-[720px] flex-col overflow-hidden rounded-lg border border-white/10 bg-[#07172d]/82 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.2)] transition motion-safe:hover:-translate-y-1 hover:border-cyan-200/30 hover:shadow-[0_24px_90px_rgba(34,211,238,0.12)] md:backdrop-blur-md"
             >
               <div className="absolute inset-0 bg-gradient-to-br from-cyan-300/10 via-transparent to-violet-400/14 opacity-75" />
+              <div className="motion-cursor-glow absolute inset-0 opacity-0 transition duration-500 group-hover:opacity-100" />
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-200/50 to-transparent opacity-0 transition group-hover:opacity-100" />
               <div className="relative z-10 flex h-full flex-col">
                 <div className="mb-4 flex items-center justify-between">
@@ -43,15 +36,30 @@ export function Cases() {
 
                 <div className="mb-5 overflow-hidden rounded-lg border border-white/10 bg-black/24 p-2 shadow-[inset_0_0_30px_rgba(34,211,238,0.05)]">
                   {item.image.length > 0 ? (
-                    <Image
-                      src={item.image}
-                      alt={item.imageAlt}
-                      width={1600}
-                      height={1000}
-                      sizes="(min-width: 1280px) 360px, (min-width: 768px) 50vw, 100vw"
-                      className="aspect-[16/10] w-full rounded-md object-cover shadow-[0_18px_70px_rgba(34,211,238,0.12)] transition duration-500 group-hover:-translate-y-1 group-hover:scale-[1.015]"
-                      loading="lazy"
-                    />
+                    <div className="relative overflow-hidden rounded-md">
+                      <Image
+                        src={item.image}
+                        alt={item.imageAlt}
+                        width={1600}
+                        height={1000}
+                        sizes="(min-width: 1280px) 360px, (min-width: 768px) 50vw, 100vw"
+                        className="aspect-[16/10] w-full rounded-md object-cover shadow-[0_18px_70px_rgba(34,211,238,0.12)] transition duration-500 group-hover:-translate-y-1 group-hover:scale-[1.015]"
+                        loading="lazy"
+                      />
+                      <div className="case-preview-overlay absolute inset-x-3 bottom-3 rounded-md border border-cyan-200/18 bg-[#031225]/82 p-2 shadow-[0_12px_34px_rgba(0,0,0,0.28)]">
+                        <div className="mb-2 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.14em] text-cyan-100">
+                          <span>{item.visual}.ops</span>
+                          <span>live</span>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {[62, 88, 44, 76].map((value, barIndex) => (
+                            <span key={value} className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                              <span className="block h-full origin-left rounded-full bg-cyan-300/80 motion-safe:animate-[quality-bar-in_.8s_ease-out_both]" style={{ transform: `scaleX(${value / 100})`, animationDelay: `${barIndex * 80}ms` }} />
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   ) : (
                     <CaseMockup type={item.visual} />
                   )}
@@ -75,7 +83,7 @@ export function Cases() {
                   </MagneticButton>
                 </div>
               </div>
-            </motion.article>
+            </article>
           ))}
         </div>
       </div>

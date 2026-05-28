@@ -1,24 +1,8 @@
-"use client";
-
-import { motion, useReducedMotion, useScroll, useSpring } from "framer-motion";
-import { useRef } from "react";
 import { timelineSection } from "@/lib/content";
 import { SectionReveal } from "./SectionReveal";
 import { SectionHeading } from "./SectionPrimitives";
 
 export function Timeline() {
-  const reduceMotion = useReducedMotion();
-  const timelineRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: timelineRef,
-    offset: ["start center", "end center"],
-  });
-  const scaleY = useSpring(scrollYProgress, {
-    stiffness: 120,
-    damping: 28,
-    restDelta: 0.001,
-  });
-
   return (
     <SectionReveal id="timeline" className="relative px-4 py-20 sm:px-6">
       <div aria-hidden="true" className="absolute inset-x-0 top-1/2 h-48 -translate-y-1/2 skew-y-3 bg-violet-300/[0.035]" />
@@ -38,21 +22,16 @@ export function Timeline() {
           </div>
         </div>
 
-        <div ref={timelineRef} className="relative">
+        <div className="relative">
           <div className="absolute left-5 top-0 h-full w-px bg-white/10 md:left-1/2" />
-          <motion.div
+          <div
             aria-hidden="true"
-            style={reduceMotion ? undefined : { scaleY }}
-            className="absolute left-5 top-0 h-full w-px origin-top bg-gradient-to-b from-cyan-200 via-violet-300 to-transparent shadow-[0_0_22px_rgba(34,211,238,0.55)] md:left-1/2"
+            className="absolute left-5 top-0 h-full w-px origin-top bg-gradient-to-b from-cyan-200 via-violet-300 to-transparent shadow-[0_0_16px_rgba(34,211,238,0.38)] md:left-1/2"
           />
           <div className="space-y-5">
             {timelineSection.items.map((item, index) => (
-              <motion.article
+              <article
                 key={item.step}
-                initial={reduceMotion ? false : { opacity: 0, x: index % 2 === 0 ? -28 : 28, filter: "blur(8px)" }}
-                whileInView={reduceMotion ? undefined : { opacity: 1, x: 0, filter: "blur(0px)" }}
-                viewport={{ once: true, margin: "-80px" }}
-                transition={{ duration: 0.55, delay: index * 0.04, ease: [0.22, 1, 0.36, 1] }}
                 className={index % 2 === 0 ? "relative pl-14 md:w-1/2 md:pr-10" : "relative pl-14 md:ml-auto md:w-1/2 md:pl-10"}
               >
                 <span className={index % 2 === 0 ? "absolute left-0 top-5 grid size-10 place-items-center rounded-full border border-cyan-200/35 bg-[#07172d] text-xs font-semibold text-cyan-100 shadow-[0_0_22px_rgba(34,211,238,0.24)] md:left-auto md:right-[-1.25rem]" : "absolute left-0 top-5 grid size-10 place-items-center rounded-full border border-cyan-200/35 bg-[#07172d] text-xs font-semibold text-cyan-100 shadow-[0_0_22px_rgba(34,211,238,0.24)] md:left-[-1.25rem]"}>
@@ -62,7 +41,7 @@ export function Timeline() {
                   <h3 className="text-xl font-semibold text-white">{item.title}</h3>
                   <p className="mt-2 text-sm leading-6 text-slate-300">{item.text}</p>
                 </div>
-              </motion.article>
+              </article>
             ))}
           </div>
         </div>
