@@ -10,6 +10,12 @@
   --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: var(--font-plex-mono), "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --font-heading: var(--font-geologica), var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --color-signal: var(--signal);
+  --color-signal-bright: var(--signal-bright);
+  --color-signal-strong: var(--signal-strong);
+  --color-surface-base: var(--surface-base);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,6 +55,18 @@
 }
 
 :root {
+  /* === Brand: single signal accent — change --signal-rgb to retheme everything (DESIGN.md) === */
+  --signal-rgb: 245 158 11; /* signal amber #f59e0b */
+  --signal: rgb(var(--signal-rgb));
+  --signal-bright: #fcd34d; /* amber-300, light highlights */
+  --signal-strong: #d97706; /* amber-600, deeper/hover */
+
+  /* === Dark surface family (one dominant dark bg) === */
+  --surface-base: #020817;
+  --surface-1: #04101f;
+  --surface-2: #06172e;
+  --surface-line: rgb(255 255 255 / 0.08);
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -147,10 +165,10 @@
 .lab-shell {
   position: relative;
   background:
-    radial-gradient(circle at 18% 8%, rgba(14, 165, 233, 0.22), transparent 28rem),
-    radial-gradient(circle at 82% 18%, rgba(124, 58, 237, 0.17), transparent 24rem),
-    radial-gradient(circle at 50% 62%, rgba(8, 47, 73, 0.42), transparent 35rem),
-    linear-gradient(180deg, #020817 0%, #04101f 42%, #020817 100%);
+    radial-gradient(circle at 18% 8%, rgb(var(--signal-rgb) / 0.16), transparent 28rem),
+    radial-gradient(circle at 82% 18%, rgb(8 47 73 / 0.34), transparent 24rem),
+    radial-gradient(circle at 50% 62%, rgb(8 47 73 / 0.42), transparent 35rem),
+    linear-gradient(180deg, var(--surface-base) 0%, var(--surface-1) 42%, var(--surface-base) 100%);
   background-size: 120% 120%, 130% 130%, 140% 140%, 100% 100%;
   animation: lab-gradient-shift 18s ease-in-out infinite alternate;
 }
@@ -162,8 +180,8 @@
   z-index: 0;
   content: "";
   background:
-    linear-gradient(rgba(125, 211, 252, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(125, 211, 252, 0.028) 1px, transparent 1px);
+    linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.028) 1px, transparent 1px);
   background-size: 44px 44px;
   mask-image: linear-gradient(to bottom, black, transparent 78%);
 }
@@ -183,19 +201,19 @@
 
 .hero-shader {
   background:
-    conic-gradient(from 180deg at 50% 50%, rgba(34, 211, 238, 0.32), rgba(124, 58, 237, 0.26), rgba(59, 130, 246, 0.14), rgba(34, 211, 238, 0.32));
+    conic-gradient(from 180deg at 50% 50%, rgb(var(--signal-rgb) / 0.30), rgb(var(--signal-rgb) / 0.06), transparent, rgb(var(--signal-rgb) / 0.30));
   animation: shader-spin 18s linear infinite;
 }
 
 .radar-sweep {
-  background: conic-gradient(from 0deg, transparent 0deg, rgba(103, 232, 249, 0.38) 28deg, transparent 68deg);
+  background: conic-gradient(from 0deg, transparent 0deg, rgb(var(--signal-rgb) / 0.38) 28deg, transparent 68deg);
   animation: shader-spin 6s linear infinite;
 }
 
 .signal-flow {
   stroke-dasharray: 8 12;
   animation: signal-flow 7s linear infinite;
-  filter: drop-shadow(0 0 7px rgba(103, 232, 249, 0.45));
+  filter: drop-shadow(0 0 7px rgb(var(--signal-rgb) / 0.45));
 }
 
 .matrix-cell,
@@ -225,7 +243,7 @@
   max-width: 25ch;
   overflow: hidden;
   white-space: nowrap;
-  border-right: 1px solid rgba(103, 232, 249, 0.75);
+  border-right: 1px solid rgb(var(--signal-rgb) / 0.75);
   animation: typing 10s steps(74, end) infinite, caret 1s step-end infinite;
 }
 
@@ -252,7 +270,7 @@ html[data-motion-mode="lite"] [data-reveal].is-visible {
 }
 
 .motion-cursor-glow {
-  background: radial-gradient(circle at var(--glow-x, 50%) var(--glow-y, 0%), rgba(34, 211, 238, 0.26), transparent 34%);
+  background: radial-gradient(circle at var(--glow-x, 50%) var(--glow-y, 0%), rgb(var(--signal-rgb) / 0.22), transparent 34%);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -268,8 +286,8 @@ html[data-motion-mode="lite"] [data-reveal].is-visible {
 
 .hero-wow-grid {
   background:
-    linear-gradient(rgba(125, 211, 252, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(125, 211, 252, 0.032) 1px, transparent 1px);
+    linear-gradient(rgb(255 255 255 / 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.032) 1px, transparent 1px);
   background-size: 28px 28px;
   mask-image: radial-gradient(circle at center, black, transparent 84%);
   transform: translate3d(calc(var(--parallax-x) * -0.35), calc(var(--parallax-y) * -0.35), 0);
@@ -307,7 +325,7 @@ html[data-motion-mode="full"] .hero-wow-ring-delay {
   max-width: 24ch;
   overflow: hidden;
   white-space: nowrap;
-  border-right: 1px solid rgba(103, 232, 249, 0.75);
+  border-right: 1px solid rgb(var(--signal-rgb) / 0.75);
 }
 
 html[data-motion-mode="full"] .hero-wow-type {
@@ -428,7 +446,7 @@ html[data-motion-mode="lite"] .hero-wow-card {
 
 @keyframes new-row-flash {
   0% {
-    background-color: rgba(34, 211, 238, 0.18);
+    background-color: rgb(var(--signal-rgb) / 0.18);
   }
   100% {
     background-color: transparent;
@@ -442,7 +460,7 @@ html[data-motion-mode="lite"] .hero-wow-card {
   }
   35% {
     transform: scale(1.045);
-    box-shadow: 0 0 24px rgba(34, 211, 238, 0.28);
+    box-shadow: 0 0 24px rgb(var(--signal-rgb) / 0.28);
   }
 }
 
@@ -466,7 +484,7 @@ html[data-motion-mode="lite"] .hero-wow-card {
   }
   50% {
     opacity: 1;
-    filter: saturate(1.35) drop-shadow(0 0 10px rgba(34, 211, 238, 0.24));
+    filter: saturate(1.35) drop-shadow(0 0 10px rgb(var(--signal-rgb) / 0.24));
   }
 }
 
