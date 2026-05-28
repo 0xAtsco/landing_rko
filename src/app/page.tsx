@@ -19,7 +19,7 @@ import { WhyNow } from "@/components/landing/WhyNow";
 
 export default function Home() {
   return (
-    <main className="lab-shell min-h-screen overflow-x-clip bg-[#020817] text-white">
+    <main className="lab-shell min-h-screen overflow-x-clip bg-[var(--surface-base)] text-white">
       <MotionBudgetController />
       <CursorGlow />
       <Header />

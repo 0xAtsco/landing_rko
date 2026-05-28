@@ -34,7 +34,7 @@ export function CursorGlow() {
     <div
       ref={glowRef}
       aria-hidden="true"
-      className="pointer-events-none fixed left-0 top-0 z-50 hidden size-72 rounded-full bg-[radial-gradient(circle,rgba(103,232,249,0.18),rgba(124,58,237,0.08),transparent_68%)] blur-2xl mix-blend-screen will-change-transform md:block"
+      className="pointer-events-none fixed left-0 top-0 z-50 hidden size-72 rounded-full bg-[radial-gradient(circle,rgb(var(--signal-rgb)/0.18),rgb(var(--signal-rgb)/0.08),transparent_68%)] blur-2xl mix-blend-screen will-change-transform md:block"
     />
   );
 }

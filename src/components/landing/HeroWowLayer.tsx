@@ -58,9 +58,9 @@ export function HeroWowLayer({ commands }: { commands: readonly string[] }) {
       <svg aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
         <defs>
           <linearGradient id="heroWowLine" x1="0" x2="1">
-            <stop offset="0%" stopColor="#22d3ee" stopOpacity=".08" />
-            <stop offset="45%" stopColor="#67e8f9" stopOpacity=".88" />
-            <stop offset="100%" stopColor="#a78bfa" stopOpacity=".24" />
+            <stop offset="0%" stopColor="var(--signal)" stopOpacity=".08" />
+            <stop offset="45%" stopColor="var(--signal-bright)" stopOpacity=".88" />
+            <stop offset="100%" stopColor="var(--signal-bright)" stopOpacity=".24" />
           </linearGradient>
         </defs>
         <polyline
@@ -75,10 +75,10 @@ export function HeroWowLayer({ commands }: { commands: readonly string[] }) {
         />
       </svg>
 
-      <div className="hero-wow-orb absolute left-1/2 top-[51%] grid size-48 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-cyan-200/28 bg-[#06172f]/80 shadow-[0_0_80px_rgba(34,211,238,0.36)] lg:size-56">
-        <div className="hero-wow-ring absolute inset-3 rounded-full border border-cyan-200/20" />
-        <div className="hero-wow-ring hero-wow-ring-delay absolute inset-8 rounded-full border border-violet-200/18" />
-        <div className="grid size-20 place-items-center rounded-full bg-cyan-200 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-950 shadow-[0_0_46px_rgba(103,232,249,0.9)]">
+      <div className="hero-wow-orb absolute left-1/2 top-[51%] grid size-48 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-signal/28 bg-[var(--surface-2)]/80 shadow-[0_0_80px_rgb(var(--signal-rgb)/0.36)] lg:size-56">
+        <div className="hero-wow-ring absolute inset-3 rounded-full border border-signal/20" />
+        <div className="hero-wow-ring hero-wow-ring-delay absolute inset-8 rounded-full border border-signal/18" />
+        <div className="grid size-20 place-items-center rounded-full bg-signal text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-950 shadow-[0_0_46px_rgb(var(--signal-rgb)/0.9)]">
           AI
         </div>
       </div>
@@ -86,17 +86,17 @@ export function HeroWowLayer({ commands }: { commands: readonly string[] }) {
       {cards.map((card, index) => (
         <div
           key={card.label}
-          className={`hero-wow-card absolute z-20 ${card.className} min-w-28 rounded-lg border border-white/12 bg-[#071a33]/90 px-3 py-2 text-xs text-white shadow-[0_16px_42px_rgba(0,0,0,0.28)] md:backdrop-blur-md`}
+          className={`hero-wow-card absolute z-20 ${card.className} min-w-28 rounded-lg border border-white/12 bg-[var(--surface-2)]/90 px-3 py-2 text-xs text-white shadow-[0_16px_42px_rgba(0,0,0,0.28)] md:backdrop-blur-md`}
           style={{ animationDelay: `${index * 0.16}s` }}
         >
-          <div className="mb-2 h-1 w-8 rounded-full bg-cyan-300/80" />
+          <div className="mb-2 h-1 w-8 rounded-full bg-signal-strong/80" />
           <div className="font-semibold">{card.label}</div>
-          <div className="mt-1 font-mono text-[10px] text-cyan-100/80">{card.metric}</div>
+          <div className="mt-1 font-mono text-[10px] text-signal-bright/80">{card.metric}</div>
         </div>
       ))}
 
-      <div className="hero-wow-terminal absolute inset-x-4 bottom-4 z-30 rounded-lg border border-cyan-200/20 bg-black/48 px-4 py-3 font-mono text-xs text-cyan-100 shadow-[0_0_32px_rgba(34,211,238,0.16)]">
-        <span className="text-violet-300">vibecamp</span>
+      <div className="hero-wow-terminal absolute inset-x-4 bottom-4 z-30 rounded-lg border border-signal/20 bg-black/48 px-4 py-3 font-mono text-xs text-signal-bright shadow-[0_0_32px_rgb(var(--signal-rgb)/0.16)]">
+        <span className="text-signal-strong">vibecamp</span>
         <span className="text-slate-500"> $ </span>
         <span className="hero-wow-type inline-block align-bottom">{commands.join("  ")}</span>
       </div>
