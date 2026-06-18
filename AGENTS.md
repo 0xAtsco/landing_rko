@@ -1,5 +1,9 @@
 # Project Rules
 
+- Git workflow:
+  - `server-prod` is the stable branch that mirrors the deployed server version.
+  - Do all local work in `work/server-prod-next`.
+  - Merge into `server-prod` only after explicit approval and after `pnpm lint` + `pnpm build` pass.
 - VibeCamp = AI Build Sprint, not an abstract AI course.
 - Write simply in Russian: short, specific, human.
 - Do not promise guaranteed income or fixed revenue.
