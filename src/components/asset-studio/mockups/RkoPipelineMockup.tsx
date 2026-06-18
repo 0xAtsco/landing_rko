@@ -1,6 +1,6 @@
 import { AssetFrame, GlassPanel, StatusPill, WindowDots } from "../AssetFrame";
 
-const flow = ["Пост / реклама", "Лендинг", "Telegram-бот", "CRM", "Менеджер"];
+const flow = ["Пост / реклама", "Сайт", "Telegram-бот", "CRM", "Менеджер"];
 const statuses = ["Новый", "В работе", "Документы", "Готово"];
 
 export function RkoPipelineMockup() {

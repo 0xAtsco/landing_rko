@@ -11,7 +11,7 @@ export function OgVibecampMockup() {
           <h1 className="text-[64px] font-semibold leading-[0.96] text-white">
             AI-воронка под РКО, Telegram и заявки за 14 дней
           </h1>
-          <p className="mt-8 text-3xl text-slate-300">Лендинг · бот · CRM · контент · лиды</p>
+          <p className="mt-8 text-3xl text-slate-300">Сайт · бот · CRM · контент · лиды</p>
         </div>
 
         <GlassPanel className="p-7">

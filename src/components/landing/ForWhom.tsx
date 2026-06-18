@@ -21,8 +21,8 @@ function AudienceCard({ title, items, positive = false }: { title: string; items
       <h2 className="text-2xl font-semibold text-white">{title}</h2>
       <div className="mt-5 space-y-3">
         {items.map((item) => (
-          <div key={item} className="flex gap-3 rounded-lg bg-[#06172e]/70 p-3 text-sm leading-6 text-slate-200">
-            <Icon className={positive ? "mt-1 size-4 shrink-0 text-cyan-200" : "mt-1 size-4 shrink-0 text-violet-200"} aria-hidden="true" />
+          <div key={item} className="flex gap-3 rounded-lg bg-[var(--surface-2)]/70 p-3 text-sm leading-6 text-slate-200">
+            <Icon className={positive ? "mt-1 size-4 shrink-0 text-signal" : "mt-1 size-4 shrink-0 text-signal"} aria-hidden="true" />
             <span>{item}</span>
           </div>
         ))}

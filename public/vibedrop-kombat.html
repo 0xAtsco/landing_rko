@@ -1,0 +1,1559 @@
+<!--
+  VibeDrop Kombat — Telegram Mini App в одном HTML.
+
+  Как запустить за 5 минут:
+  1. Замени значения в CONFIG ниже:
+     - botUsername: username твоего бота без @
+     - telegramAppUrl: ссылка вида https://t.me/<bot_username>/<short_name>
+     - bankReferralUrl: твоя партнёрская ссылка банка / РКО
+  2. Залей этот файл на HTTPS-хостинг:
+     - Vercel/Netlify: положи файл в public и деплой проект
+     - GitHub Pages: загрузи файл и включи Pages
+     - любой VPS/Nginx: отдай файл как статический HTML
+  3. В BotFather:
+     - /newbot или /mybots -> Bot Settings -> Menu Button -> Web App
+     - вставь URL: https://твой-домен/vibedrop-kombat.html
+  4. Для Mini App:
+     - BotFather -> /newapp -> выбери бота
+     - укажи название VibeDrop Kombat, short name и тот же HTTPS URL
+  5. Открой https://t.me/<bot_username>/<short_name> и проверь:
+     - Telegram.WebApp.ready/expand
+     - haptic feedback
+     - share/ref link
+     - openLink на партнёрскую ссылку
+  6. Важно для продакшена:
+     - реальные начисления подтверждай только через backend/callback партнёра
+     - localStorage в этом файле — демо-прогресс на устройстве
+     - не обещай фиксированный доход: формулируй "до 3000 ₽ по условиям банка"
+-->
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#020817" />
+    <meta
+      name="description"
+      content="VibeDrop Kombat — Telegram Mini App кликер для геймификации РКО-дропа с VibeCoins, бустами, комбо и реферальной механикой."
+    />
+    <title>VibeDrop Kombat</title>
+    <link rel="manifest" href="" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geologica:wght@600;700;800;900&family=IBM+Plex+Mono:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              heading: ["Geologica", "system-ui", "sans-serif"],
+              sans: ["IBM Plex Sans", "system-ui", "sans-serif"],
+              mono: ["IBM Plex Mono", "ui-monospace", "SFMono-Regular", "monospace"],
+            },
+            colors: {
+              surface: {
+                base: "#020817",
+                one: "#04101f",
+                two: "#06172e",
+                line: "rgb(255 255 255 / 0.08)",
+              },
+              signal: {
+                DEFAULT: "#f59e0b",
+                bright: "#fcd34d",
+                strong: "#d97706",
+              },
+            },
+            boxShadow: {
+              signal: "0 0 30px rgb(245 158 11 / 0.22)",
+              panel: "0 16px 60px rgb(0 0 0 / 0.34)",
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      :root {
+        --surface-base: #020817;
+        --surface-1: #04101f;
+        --surface-2: #06172e;
+        --surface-line: rgb(255 255 255 / 0.08);
+        --signal-rgb: 245 158 11;
+        --signal: rgb(var(--signal-rgb));
+        --signal-bright: #fcd34d;
+        --signal-strong: #d97706;
+        --safe-bottom: env(safe-area-inset-bottom, 0px);
+      }
+
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      html {
+        background: var(--surface-base);
+      }
+
+      body {
+        min-height: 100vh;
+        overflow-x: hidden;
+        background:
+          radial-gradient(circle at 50% -10%, rgb(var(--signal-rgb) / 0.12), transparent 34rem),
+          linear-gradient(180deg, #020817 0%, #030b18 44%, #020817 100%);
+        color: white;
+        font-family: "IBM Plex Sans", system-ui, sans-serif;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.34;
+        background-image:
+          linear-gradient(rgb(255 255 255 / 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgb(255 255 255 / 0.03) 1px, transparent 1px);
+        background-size: 28px 28px;
+        mask-image: linear-gradient(to bottom, black, transparent 82%);
+      }
+
+      button,
+      a {
+        touch-action: manipulation;
+      }
+
+      .app-shell {
+        min-height: 100vh;
+        min-height: 100dvh;
+        padding-bottom: calc(94px + var(--safe-bottom));
+      }
+
+      .panel {
+        border: 1px solid var(--surface-line);
+        background:
+          linear-gradient(180deg, rgb(255 255 255 / 0.055), rgb(255 255 255 / 0.018)),
+          var(--surface-1);
+        box-shadow: 0 14px 60px rgb(0 0 0 / 0.32);
+      }
+
+      .terminal-line {
+        position: relative;
+      }
+
+      .terminal-line::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgb(var(--signal-rgb) / 0.44), transparent);
+      }
+
+      .signal-button {
+        border: 1px solid rgb(var(--signal-rgb) / 0.48);
+        background:
+          linear-gradient(180deg, rgb(252 211 77 / 0.98), rgb(245 158 11 / 0.94)),
+          var(--signal);
+        color: #171005;
+        box-shadow:
+          0 0 0 1px rgb(255 255 255 / 0.08) inset,
+          0 18px 42px rgb(var(--signal-rgb) / 0.24);
+        text-shadow: 0 1px 0 rgb(255 255 255 / 0.3);
+      }
+
+      .dark-button {
+        border: 1px solid rgb(255 255 255 / 0.1);
+        background:
+          linear-gradient(180deg, rgb(255 255 255 / 0.075), rgb(255 255 255 / 0.02)),
+          var(--surface-2);
+      }
+
+      .character-stage {
+        min-height: 310px;
+        isolation: isolate;
+      }
+
+      .dropper {
+        --tilt: -1deg;
+        width: min(76vw, 320px);
+        aspect-ratio: 0.9;
+        position: relative;
+        transform: rotate(var(--tilt)) translateZ(0);
+        filter: drop-shadow(0 34px 38px rgb(0 0 0 / 0.42));
+        user-select: none;
+        cursor: pointer;
+      }
+
+      .dropper::before {
+        content: "";
+        position: absolute;
+        inset: 9% 6% 4%;
+        border-radius: 46% 46% 42% 42%;
+        background:
+          radial-gradient(circle at 35% 26%, rgb(255 255 255 / 0.18), transparent 11%),
+          linear-gradient(155deg, #facc15 0%, #d97706 52%, #92400e 100%);
+        border: 3px solid rgb(255 255 255 / 0.1);
+        box-shadow:
+          inset 0 -22px 34px rgb(0 0 0 / 0.2),
+          inset 0 18px 18px rgb(255 255 255 / 0.12),
+          0 0 55px rgb(var(--signal-rgb) / 0.2);
+      }
+
+      .dropper::after {
+        content: "$";
+        position: absolute;
+        left: 50%;
+        top: 45%;
+        width: 86px;
+        height: 86px;
+        display: grid;
+        place-items: center;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        border: 3px solid rgb(23 16 5 / 0.35);
+        background: rgb(2 8 23 / 0.14);
+        color: rgb(23 16 5 / 0.78);
+        font: 900 58px/1 "IBM Plex Mono", monospace;
+      }
+
+      .dropper.is-tapping {
+        animation: tap-shake 210ms linear;
+      }
+
+      .dropper.is-fire .fire-ring {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+
+      .fire-ring {
+        position: absolute;
+        left: 50%;
+        top: 53%;
+        z-index: -1;
+        width: 106%;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.72);
+        transition: 180ms ease;
+        background:
+          conic-gradient(
+            from 0deg,
+            transparent,
+            rgb(245 158 11 / 0.12),
+            rgb(252 211 77 / 0.76),
+            transparent,
+            rgb(245 158 11 / 0.64),
+            transparent
+          );
+        filter: blur(4px);
+        animation: fire-spin 1.8s linear infinite;
+      }
+
+      .knot {
+        position: absolute;
+        left: 50%;
+        top: 4%;
+        width: 105px;
+        height: 70px;
+        transform: translateX(-50%);
+        border-radius: 30% 30% 46% 46%;
+        background:
+          linear-gradient(145deg, #fde68a, #d97706 70%),
+          #d97706;
+        border: 3px solid rgb(255 255 255 / 0.12);
+        clip-path: polygon(12% 100%, 26% 9%, 74% 9%, 88% 100%);
+      }
+
+      .headphone {
+        position: absolute;
+        top: 24%;
+        width: 42px;
+        height: 94px;
+        border-radius: 26px;
+        background:
+          linear-gradient(180deg, #111827, #020817),
+          #020817;
+        border: 2px solid rgb(255 255 255 / 0.16);
+        box-shadow: inset 0 0 0 7px rgb(var(--signal-rgb) / 0.2);
+      }
+
+      .headphone.left {
+        left: 2%;
+        transform: rotate(-10deg);
+      }
+
+      .headphone.right {
+        right: 2%;
+        transform: rotate(10deg);
+      }
+
+      .headband {
+        position: absolute;
+        left: 50%;
+        top: 16%;
+        width: 176px;
+        height: 98px;
+        transform: translateX(-50%);
+        border: 14px solid #111827;
+        border-bottom: 0;
+        border-radius: 90px 90px 0 0;
+        box-shadow: 0 -2px 0 rgb(255 255 255 / 0.12) inset;
+      }
+
+      .glasses {
+        position: absolute;
+        left: 50%;
+        top: 35%;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transform: translateX(-50%) rotate(-2deg);
+      }
+
+      .lens {
+        width: 66px;
+        height: 43px;
+        border-radius: 16px 16px 20px 20px;
+        border: 5px solid #101827;
+        background:
+          linear-gradient(135deg, rgb(255 255 255 / 0.22), transparent 34%),
+          rgb(2 8 23 / 0.72);
+      }
+
+      .bridge {
+        width: 16px;
+        height: 7px;
+        background: #101827;
+        border-radius: 999px;
+      }
+
+      .smirk {
+        position: absolute;
+        left: 50%;
+        top: 58%;
+        width: 76px;
+        height: 32px;
+        transform: translateX(-50%) rotate(-2deg);
+        border-bottom: 8px solid rgb(23 16 5 / 0.78);
+        border-radius: 0 0 999px 999px;
+      }
+
+      .vape {
+        position: absolute;
+        right: 18%;
+        top: 58%;
+        width: 76px;
+        height: 14px;
+        transform: rotate(-15deg);
+        border-radius: 999px;
+        background: linear-gradient(90deg, #111827, #334155 62%, var(--signal-bright));
+        box-shadow: 0 0 18px rgb(var(--signal-rgb) / 0.28);
+      }
+
+      .smoke {
+        position: absolute;
+        right: 9%;
+        top: 50%;
+        width: 70px;
+        height: 48px;
+        opacity: 0.38;
+        background:
+          radial-gradient(circle at 26% 65%, rgb(255 255 255 / 0.6), transparent 18%),
+          radial-gradient(circle at 52% 42%, rgb(255 255 255 / 0.45), transparent 16%),
+          radial-gradient(circle at 74% 20%, rgb(255 255 255 / 0.32), transparent 15%);
+        filter: blur(2px);
+        animation: smoke-rise 2.8s ease-in-out infinite;
+      }
+
+      .arm {
+        position: absolute;
+        top: 59%;
+        width: 82px;
+        height: 24px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #d97706, #facc15);
+        border: 2px solid rgb(255 255 255 / 0.12);
+      }
+
+      .arm.left {
+        left: -2%;
+        transform: rotate(24deg);
+      }
+
+      .arm.right {
+        right: -2%;
+        transform: rotate(-24deg);
+      }
+
+      .shoe {
+        position: absolute;
+        bottom: 1%;
+        width: 78px;
+        height: 30px;
+        border-radius: 999px;
+        background: #0f172a;
+        border: 2px solid rgb(255 255 255 / 0.12);
+      }
+
+      .shoe.left {
+        left: 23%;
+        transform: rotate(7deg);
+      }
+
+      .shoe.right {
+        right: 23%;
+        transform: rotate(-7deg);
+      }
+
+      .cash-note {
+        position: absolute;
+        z-index: 8;
+        width: 46px;
+        height: 24px;
+        border-radius: 5px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgb(255 255 255 / 0.2);
+        background: linear-gradient(135deg, #fef3c7, #f59e0b);
+        color: #171005;
+        font: 800 12px/1 "IBM Plex Mono", monospace;
+        pointer-events: none;
+        animation: money-fall 760ms ease-out forwards;
+      }
+
+      .floating-plus {
+        position: fixed;
+        z-index: 50;
+        pointer-events: none;
+        color: var(--signal-bright);
+        font: 900 24px/1 "IBM Plex Mono", monospace;
+        text-shadow: 0 0 20px rgb(var(--signal-rgb) / 0.6);
+        animation: plus-pop 740ms ease-out forwards;
+      }
+
+      .particle {
+        position: fixed;
+        z-index: 48;
+        width: 9px;
+        height: 9px;
+        border-radius: 3px;
+        pointer-events: none;
+        background: var(--signal);
+        box-shadow: 0 0 14px rgb(var(--signal-rgb) / 0.75);
+        animation: particle-pop 660ms ease-out forwards;
+      }
+
+      .toast {
+        position: fixed;
+        left: 50%;
+        bottom: calc(98px + var(--safe-bottom));
+        z-index: 80;
+        width: min(92vw, 420px);
+        transform: translateX(-50%) translateY(22px);
+        opacity: 0;
+        border: 1px solid rgb(var(--signal-rgb) / 0.34);
+        border-radius: 18px;
+        background: rgb(4 16 31 / 0.94);
+        color: white;
+        box-shadow: 0 18px 50px rgb(0 0 0 / 0.36);
+        transition: 220ms ease;
+      }
+
+      .toast.show {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1;
+      }
+
+      .modal-root {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: none;
+        align-items: flex-end;
+        justify-content: center;
+        background: rgb(0 0 0 / 0.72);
+        padding: 16px;
+      }
+
+      .modal-root.open {
+        display: flex;
+      }
+
+      .modal-panel {
+        width: min(100%, 460px);
+        max-height: min(86vh, 720px);
+        overflow: auto;
+        border: 1px solid rgb(var(--signal-rgb) / 0.28);
+        border-radius: 26px;
+        background:
+          linear-gradient(180deg, rgb(255 255 255 / 0.07), rgb(255 255 255 / 0.025)),
+          #04101f;
+        box-shadow: 0 24px 90px rgb(0 0 0 / 0.58);
+        animation: sheet-in 180ms ease-out;
+      }
+
+      .bottom-nav {
+        padding-bottom: calc(10px + var(--safe-bottom));
+      }
+
+      .tab-button.active {
+        color: var(--signal-bright);
+        border-color: rgb(var(--signal-rgb) / 0.42);
+        background: rgb(var(--signal-rgb) / 0.1);
+      }
+
+      .view {
+        display: none;
+      }
+
+      .view.active {
+        display: block;
+      }
+
+      .daily-card.done {
+        border-color: rgb(var(--signal-rgb) / 0.5);
+        background: rgb(var(--signal-rgb) / 0.1);
+      }
+
+      .progress-shine {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .progress-shine::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        width: 42%;
+        background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.36), transparent);
+        animation: progress-scan 1.8s linear infinite;
+      }
+
+      @keyframes tap-shake {
+        0% {
+          transform: rotate(-1deg) scale(1);
+        }
+        30% {
+          transform: rotate(4deg) scale(0.97);
+        }
+        62% {
+          transform: rotate(-5deg) scale(1.045);
+        }
+        100% {
+          transform: rotate(-1deg) scale(1);
+        }
+      }
+
+      @keyframes plus-pop {
+        0% {
+          opacity: 0;
+          transform: translate3d(-50%, 0, 0) scale(0.72);
+        }
+        18% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+          transform: translate3d(-50%, -88px, 0) scale(1.18);
+        }
+      }
+
+      @keyframes particle-pop {
+        0% {
+          opacity: 1;
+          transform: translate3d(0, 0, 0) scale(1);
+        }
+        100% {
+          opacity: 0;
+          transform: translate3d(var(--dx), var(--dy), 0) rotate(220deg) scale(0.22);
+        }
+      }
+
+      @keyframes money-fall {
+        0% {
+          opacity: 0;
+          transform: translate3d(0, 0, 0) rotate(0deg) scale(0.6);
+        }
+        18% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+          transform: translate3d(var(--mx), var(--my), 0) rotate(var(--mr)) scale(0.92);
+        }
+      }
+
+      @keyframes fire-spin {
+        to {
+          transform: translate(-50%, -50%) scale(1) rotate(360deg);
+        }
+      }
+
+      @keyframes smoke-rise {
+        0%,
+        100% {
+          transform: translate3d(0, 4px, 0) scale(0.94);
+          opacity: 0.22;
+        }
+        50% {
+          transform: translate3d(8px, -10px, 0) scale(1.08);
+          opacity: 0.42;
+        }
+      }
+
+      @keyframes sheet-in {
+        from {
+          opacity: 0;
+          transform: translateY(18px) scale(0.98);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      @keyframes progress-scan {
+        from {
+          transform: translateX(-120%);
+        }
+        to {
+          transform: translateX(260%);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 1ms !important;
+          animation-iteration-count: 1 !important;
+          scroll-behavior: auto !important;
+          transition-duration: 1ms !important;
+        }
+      }
+
+      @media (min-width: 760px) {
+        .app-shell {
+          padding-bottom: 34px;
+        }
+
+        .bottom-nav {
+          position: sticky;
+          bottom: 16px;
+          width: min(100%, 460px);
+          margin-inline: auto;
+          border-radius: 26px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell relative mx-auto w-full max-w-[480px] px-4 pt-3">
+      <header class="sticky top-0 z-40 -mx-4 border-b border-white/10 bg-surface-base/92 px-4 pb-3 pt-3 backdrop-blur">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <p class="font-mono text-[10px] uppercase tracking-[0.26em] text-signal-bright">VibeDrop Kombat</p>
+            <h1 class="font-heading text-xl font-black leading-tight text-white">Дроп-пульт РКО</h1>
+          </div>
+          <button
+            id="syncBtn"
+            class="dark-button rounded-2xl px-3 py-2 text-left font-mono text-[11px] font-bold text-slate-200 active:scale-[0.98]"
+            type="button"
+          >
+            SYNC
+            <span id="syncState" class="block text-[10px] font-semibold text-slate-500">local</span>
+          </button>
+        </div>
+
+        <div class="mt-3 grid grid-cols-[1fr_auto] gap-3">
+          <div class="panel rounded-[22px] p-3">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">VibeCoins</p>
+                <p id="coinCounter" class="font-heading text-3xl font-black leading-none text-signal-bright">0</p>
+              </div>
+              <div class="rounded-2xl border border-signal/25 bg-signal/10 px-3 py-2 text-right">
+                <p id="levelLabel" class="font-mono text-[11px] font-bold text-signal-bright">Bronze</p>
+                <p id="comboLabel" class="font-mono text-[10px] text-slate-400">x1</p>
+              </div>
+            </div>
+            <div class="mt-3 h-3 overflow-hidden rounded-full bg-black/35">
+              <div id="levelProgress" class="progress-shine h-full w-0 rounded-full bg-signal"></div>
+            </div>
+            <div class="mt-2 flex items-center justify-between font-mono text-[10px] text-slate-500">
+              <span id="levelProgressText">0 / 10 000</span>
+              <span id="nextLevelText">до Silver</span>
+            </div>
+          </div>
+          <div class="panel grid w-[86px] place-items-center rounded-[22px] p-2 text-center">
+            <p class="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">streak</p>
+            <p id="streakCounter" class="font-heading text-3xl font-black text-white">0</p>
+            <p id="fireState" class="font-mono text-[10px] text-slate-500">idle</p>
+          </div>
+        </div>
+      </header>
+
+      <main class="relative z-10 mt-4">
+        <section id="viewTap" class="view active">
+          <div class="terminal-line panel rounded-[28px] px-4 pb-5 pt-4">
+            <div class="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <p id="userLabel" class="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                  telegram user
+                </p>
+                <h2 class="font-heading text-2xl font-black">Тапай VibeDropper</h2>
+              </div>
+              <div id="turboBadge" class="rounded-full border border-white/10 bg-black/25 px-3 py-1 font-mono text-[10px] text-slate-400">
+                turbo off
+              </div>
+            </div>
+
+            <div class="character-stage relative grid place-items-center py-2">
+              <button id="tapTarget" class="dropper" type="button" aria-label="Тапнуть VibeDropper">
+                <span class="fire-ring"></span>
+                <span class="headband"></span>
+                <span class="headphone left"></span>
+                <span class="headphone right"></span>
+                <span class="knot"></span>
+                <span class="glasses">
+                  <span class="lens"></span>
+                  <span class="bridge"></span>
+                  <span class="lens"></span>
+                </span>
+                <span class="smirk"></span>
+                <span class="vape"></span>
+                <span class="smoke"></span>
+                <span class="arm left"></span>
+                <span class="arm right"></span>
+                <span class="shoe left"></span>
+                <span class="shoe right"></span>
+              </button>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2">
+              <div class="rounded-2xl border border-white/10 bg-black/20 p-3">
+                <p class="font-mono text-[10px] uppercase text-slate-500">tap</p>
+                <p class="font-heading text-lg font-black text-white">11-37</p>
+              </div>
+              <div class="rounded-2xl border border-white/10 bg-black/20 p-3">
+                <p class="font-mono text-[10px] uppercase text-slate-500">3 taps</p>
+                <p class="font-heading text-lg font-black text-signal-bright">x2</p>
+              </div>
+              <div class="rounded-2xl border border-white/10 bg-black/20 p-3">
+                <p class="font-mono text-[10px] uppercase text-slate-500">10 taps</p>
+                <p class="font-heading text-lg font-black text-signal-bright">FIRE</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 grid gap-3">
+            <button id="claimBtn" class="signal-button rounded-[24px] px-5 py-4 text-left active:scale-[0.99]" type="button">
+              <span class="block font-heading text-2xl font-black leading-none">ПРОВЕРИТЬ БОНУС ДО 3000₽</span>
+              <span class="mt-1 block text-sm font-bold opacity-80">РКО подтверждается у банка. В игре сразу +15 000 VC.</span>
+            </button>
+            <div class="grid grid-cols-2 gap-3">
+              <button id="turboBtn" class="dark-button rounded-[22px] p-4 text-left active:scale-[0.98]" type="button">
+                <span class="block text-2xl">⚡</span>
+                <span class="block font-heading text-base font-black">Turbo Tap</span>
+                <span class="font-mono text-[11px] text-slate-400">x3 на 30 сек</span>
+              </button>
+              <button id="shareBtn" class="dark-button rounded-[22px] p-4 text-left active:scale-[0.98]" type="button">
+                <span class="block text-2xl">↗</span>
+                <span class="block font-heading text-base font-black">Позвать 3</span>
+                <span id="friendsMini" class="font-mono text-[11px] text-slate-400">0/3 друзей</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section id="viewCombo" class="view">
+          <div class="panel rounded-[28px] p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">daily combo</p>
+                <h2 class="font-heading text-2xl font-black">3 карты дня</h2>
+              </div>
+              <div class="rounded-2xl border border-signal/25 bg-signal/10 px-3 py-2 text-right font-mono text-[11px] text-signal-bright">
+                +5 000 VC
+              </div>
+            </div>
+            <p class="mt-2 text-sm leading-snug text-slate-400">
+              Закрой все карты и забери игровой буст. Реальный бонус зависит от банка и условий партнёра.
+            </p>
+
+            <div id="dailyCards" class="mt-4 grid gap-3"></div>
+
+            <button id="dailyClaimBtn" class="signal-button mt-4 w-full rounded-[22px] px-5 py-4 font-heading text-xl font-black disabled:cursor-not-allowed disabled:opacity-50" type="button">
+              ЗАБРАТЬ DAILY COMBO
+            </button>
+          </div>
+
+          <div class="panel mt-4 rounded-[28px] p-4">
+            <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">boosts</p>
+            <div class="mt-3 grid gap-3">
+              <button id="rkoBoostBtn" class="dark-button rounded-[22px] p-4 text-left active:scale-[0.98]" type="button">
+                <span class="block font-heading text-xl font-black text-signal-bright">Открыть РКО</span>
+                <span class="mt-1 block text-sm text-slate-400">Переход по партнёрской ссылке. После игровой отметки: +15 000 VC.</span>
+              </button>
+              <button id="syncProgressBtn" class="dark-button rounded-[22px] p-4 text-left active:scale-[0.98]" type="button">
+                <span class="block font-heading text-xl font-black">Синхронизировать</span>
+                <span class="mt-1 block text-sm text-slate-400">Демо-синк прогресса, уровня и комбо в облако.</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section id="viewBoard" class="view">
+          <div class="panel rounded-[28px] p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">leaderboard</p>
+                <h2 class="font-heading text-2xl font-black">Короли дропа сегодня</h2>
+              </div>
+              <button id="refreshBoardBtn" class="dark-button rounded-2xl px-3 py-2 font-mono text-[11px] font-bold" type="button">
+                refresh
+              </button>
+            </div>
+            <div id="leaderboard" class="mt-4 grid gap-2"></div>
+          </div>
+        </section>
+
+        <section id="viewFriends" class="view">
+          <div class="panel rounded-[28px] p-4">
+            <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">friends</p>
+            <h2 class="font-heading text-2xl font-black">Реф-сетка</h2>
+            <p class="mt-2 text-sm leading-snug text-slate-400">
+              Друг открывает РКО по твоей ссылке: в игре +5 000 VC. Денежные выплаты считаются только после подтверждения партнёра.
+            </p>
+
+            <div class="mt-4 rounded-[22px] border border-white/10 bg-black/25 p-4">
+              <p class="font-mono text-[10px] uppercase text-slate-500">твоя ссылка</p>
+              <p id="refLink" class="mt-2 break-all font-mono text-sm text-signal-bright"></p>
+              <div class="mt-3 grid grid-cols-2 gap-3">
+                <button id="copyRefBtn" class="dark-button rounded-2xl px-4 py-3 font-heading font-black" type="button">Скопировать</button>
+                <button id="shareRefBtn" class="signal-button rounded-2xl px-4 py-3 font-heading font-black" type="button">Поделиться</button>
+              </div>
+            </div>
+
+            <div class="mt-4 grid grid-cols-3 gap-2">
+              <div class="rounded-2xl border border-white/10 bg-black/20 p-3">
+                <p class="font-mono text-[10px] uppercase text-slate-500">friends</p>
+                <p id="friendsCount" class="font-heading text-2xl font-black">0</p>
+              </div>
+              <div class="rounded-2xl border border-white/10 bg-black/20 p-3">
+                <p class="font-mono text-[10px] uppercase text-slate-500">bonus</p>
+                <p id="friendsBonus" class="font-heading text-2xl font-black">0</p>
+              </div>
+              <div class="rounded-2xl border border-white/10 bg-black/20 p-3">
+                <p class="font-mono text-[10px] uppercase text-slate-500">rank</p>
+                <p id="friendRank" class="font-heading text-2xl font-black">#?</p>
+              </div>
+            </div>
+          </div>
+
+          <button id="launchTelegramBtn" class="signal-button mt-4 w-full rounded-[24px] px-5 py-4 text-left active:scale-[0.99]" type="button">
+            <span class="block font-heading text-2xl font-black leading-none">ЗАПУСТИТЬ В TELEGRAM</span>
+            <span class="mt-1 block text-sm font-bold opacity-80">Откроет Mini App ссылку из CONFIG.</span>
+          </button>
+        </section>
+      </main>
+
+      <nav class="bottom-nav panel fixed inset-x-3 bottom-0 z-50 grid grid-cols-4 gap-2 rounded-t-[26px] px-2 pt-2 backdrop-blur">
+        <button class="tab-button active rounded-2xl border border-transparent px-2 py-3 text-center text-slate-400" data-view="Tap" type="button">
+          <span class="block text-xl">●</span>
+          <span class="font-mono text-[10px] font-bold">tap</span>
+        </button>
+        <button class="tab-button rounded-2xl border border-transparent px-2 py-3 text-center text-slate-400" data-view="Combo" type="button">
+          <span class="block text-xl">▣</span>
+          <span class="font-mono text-[10px] font-bold">combo</span>
+        </button>
+        <button class="tab-button rounded-2xl border border-transparent px-2 py-3 text-center text-slate-400" data-view="Board" type="button">
+          <span class="block text-xl">≡</span>
+          <span class="font-mono text-[10px] font-bold">top</span>
+        </button>
+        <button class="tab-button rounded-2xl border border-transparent px-2 py-3 text-center text-slate-400" data-view="Friends" type="button">
+          <span class="block text-xl">↗</span>
+          <span class="font-mono text-[10px] font-bold">refs</span>
+        </button>
+      </nav>
+    </div>
+
+    <div id="modalRoot" class="modal-root" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-panel p-5">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">claim real bonus</p>
+            <h2 id="modalTitle" class="font-heading text-2xl font-black">Проверка РКО-бонуса</h2>
+          </div>
+          <button id="closeModalBtn" class="dark-button grid h-10 w-10 place-items-center rounded-2xl text-xl leading-none" type="button" aria-label="Закрыть">
+            ×
+          </button>
+        </div>
+
+        <div class="mt-4 rounded-[22px] border border-signal/25 bg-signal/10 p-4">
+          <p class="font-heading text-xl font-black text-signal-bright">До 3000₽ по условиям банка</p>
+          <p class="mt-2 text-sm leading-snug text-slate-300">
+            Открой счёт по партнёрской ссылке. Игра начислит VibeCoins сразу, а реальные выплаты должны подтверждаться банком или партнёрским кабинетом.
+          </p>
+        </div>
+
+        <div class="mt-4 grid gap-3">
+          <button id="openBankBtn" class="signal-button rounded-[22px] px-5 py-4 text-left active:scale-[0.99]" type="button">
+            <span class="block font-heading text-xl font-black">ПЕРЕЙТИ К РКО</span>
+            <span class="block text-sm font-bold opacity-80">Откроется партнёрская ссылка</span>
+          </button>
+          <button id="confirmRkoBtn" class="dark-button rounded-[22px] px-5 py-4 text-left active:scale-[0.99]" type="button">
+            <span class="block font-heading text-xl font-black">Я открыл счёт в игре</span>
+            <span class="block text-sm text-slate-400">+15 000 VC и ускорение уровня. Для продакшена нужен backend.</span>
+          </button>
+        </div>
+
+        <p class="mt-4 text-xs leading-snug text-slate-500">
+          Это игровая механика и демо-интерфейс. Финальные условия, сроки и доступность бонуса определяет банк.
+        </p>
+      </div>
+    </div>
+
+    <div id="toast" class="toast p-4">
+      <p id="toastTitle" class="font-heading text-base font-black text-signal-bright">Готово</p>
+      <p id="toastText" class="mt-1 text-sm text-slate-300">Прогресс сохранён.</p>
+    </div>
+
+    <script>
+      const CONFIG = {
+        botUsername: "your_vibedrop_bot",
+        telegramAppUrl: "https://t.me/your_vibedrop_bot/vibedrop",
+        bankReferralUrl: "https://example.com/rko?utm_source=vibedrop_kombat&utm_medium=miniapp",
+        localStorageKey: "vibedrop-kombat-state-v1",
+      };
+
+      const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+
+      const levels = [
+        { name: "Bronze", min: 0 },
+        { name: "Silver", min: 10000 },
+        { name: "Gold", min: 35000 },
+        { name: "Legend", min: 90000 },
+        { name: "God of Drops", min: 200000 },
+      ];
+
+      const dailyCombo = [
+        { id: "rko", title: "Открыл РКО", text: "Перешёл к банку и отметил шаг в игре.", icon: "₽" },
+        { id: "friend", title: "Привёл друга", text: "Поделился реф-ссылкой в Telegram.", icon: "↗" },
+        { id: "bonus", title: "Проверил бонус", text: "Открыл claim-модалку и забрал VC.", icon: "✓" },
+      ];
+
+      const seededLeaders = [
+        ["DropBoss", 182430],
+        ["RKO Hunter", 151220],
+        ["Tochka Vibe", 133900],
+        ["Tap Baron", 120540],
+        ["Amber King", 109800],
+        ["Lead Miner", 97010],
+        ["Bank Runner", 88440],
+        ["Cash Pilot", 74320],
+        ["MiniApp Max", 62080],
+        ["Quiet Signal", 50500],
+      ];
+
+      const todayKey = () => new Date().toISOString().slice(0, 10);
+
+      const initialState = () => ({
+        coins: 0,
+        taps: 0,
+        combo: 0,
+        maxCombo: 0,
+        friends: 0,
+        friendsBonus: 0,
+        dailyDate: todayKey(),
+        dailyDone: {},
+        dailyClaimed: false,
+        rkoClaimed: false,
+        turboUntil: 0,
+        fireUntil: 0,
+        lastTapAt: 0,
+        syncAt: null,
+      });
+
+      let state = loadState();
+      let activeView = "Tap";
+      let toastTimer = null;
+      let rafId = null;
+
+      const $ = (id) => document.getElementById(id);
+
+      const els = {
+        coinCounter: $("coinCounter"),
+        levelLabel: $("levelLabel"),
+        comboLabel: $("comboLabel"),
+        levelProgress: $("levelProgress"),
+        levelProgressText: $("levelProgressText"),
+        nextLevelText: $("nextLevelText"),
+        streakCounter: $("streakCounter"),
+        fireState: $("fireState"),
+        turboBadge: $("turboBadge"),
+        tapTarget: $("tapTarget"),
+        syncState: $("syncState"),
+        dailyCards: $("dailyCards"),
+        dailyClaimBtn: $("dailyClaimBtn"),
+        leaderboard: $("leaderboard"),
+        friendsMini: $("friendsMini"),
+        friendsCount: $("friendsCount"),
+        friendsBonus: $("friendsBonus"),
+        friendRank: $("friendRank"),
+        refLink: $("refLink"),
+        userLabel: $("userLabel"),
+        modalRoot: $("modalRoot"),
+        toast: $("toast"),
+        toastTitle: $("toastTitle"),
+        toastText: $("toastText"),
+      };
+
+      bootTelegram();
+      installManifest();
+      resetDailyIfNeeded();
+      bindEvents();
+      renderAll();
+      startTicker();
+
+      function bootTelegram() {
+        if (!tg) return;
+
+        tg.ready();
+        tg.expand();
+        tg.setHeaderColor("#020817");
+        tg.setBackgroundColor("#020817");
+        if (tg.enableClosingConfirmation) tg.enableClosingConfirmation();
+
+        if (tg.BackButton) {
+          tg.BackButton.onClick(() => {
+            if (els.modalRoot.classList.contains("open")) {
+              closeModal();
+            } else if (activeView !== "Tap") {
+              switchView("Tap");
+            } else {
+              tg.BackButton.hide();
+            }
+          });
+        }
+
+        if (tg.MainButton) {
+          tg.MainButton.setText("ПРОВЕРИТЬ БОНУС РКО");
+          tg.MainButton.color = "#f59e0b";
+          tg.MainButton.textColor = "#171005";
+          tg.MainButton.onClick(openClaimModal);
+          tg.MainButton.show();
+        }
+
+        const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
+        if (user && user.first_name) {
+          els.userLabel.textContent = `${user.first_name} / tg verified`;
+        }
+      }
+
+      function installManifest() {
+        const iconSvg =
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#020817"/><circle cx="256" cy="270" r="150" fill="#f59e0b"/><path d="M190 124h132l24 92H166z" fill="#fcd34d"/><rect x="154" y="214" width="204" height="94" rx="28" fill="#111827"/><circle cx="211" cy="260" r="24" fill="#020817"/><circle cx="301" cy="260" r="24" fill="#020817"/><path d="M210 338c34 28 70 28 104 0" stroke="#171005" stroke-width="22" stroke-linecap="round" fill="none"/><text x="256" y="438" text-anchor="middle" font-family="monospace" font-size="76" font-weight="900" fill="#fcd34d">$</text></svg>';
+
+        const manifest = {
+          name: "VibeDrop Kombat",
+          short_name: "VibeDrop",
+          description: "Telegram Mini App кликер для геймификации РКО-дропа.",
+          start_url: location.pathname || "/vibedrop-kombat.html",
+          scope: "/",
+          display: "standalone",
+          orientation: "portrait",
+          background_color: "#020817",
+          theme_color: "#020817",
+          icons: [
+            {
+              src: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(iconSvg),
+              sizes: "512x512",
+              type: "image/svg+xml",
+              purpose: "any maskable",
+            },
+          ],
+        };
+
+        const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/manifest+json" });
+        const url = URL.createObjectURL(blob);
+        document.querySelector('link[rel="manifest"]').setAttribute("href", url);
+      }
+
+      function loadState() {
+        try {
+          const raw = localStorage.getItem(CONFIG.localStorageKey);
+          if (!raw) return initialState();
+          return { ...initialState(), ...JSON.parse(raw) };
+        } catch (error) {
+          return initialState();
+        }
+      }
+
+      function saveState() {
+        localStorage.setItem(CONFIG.localStorageKey, JSON.stringify(state));
+      }
+
+      function resetDailyIfNeeded() {
+        if (state.dailyDate === todayKey()) return;
+        state.dailyDate = todayKey();
+        state.dailyDone = {};
+        state.dailyClaimed = false;
+        saveState();
+      }
+
+      function bindEvents() {
+        els.tapTarget.addEventListener("click", handleTap);
+
+        $("claimBtn").addEventListener("click", openClaimModal);
+        $("rkoBoostBtn").addEventListener("click", openClaimModal);
+        $("openBankBtn").addEventListener("click", openBankLink);
+        $("confirmRkoBtn").addEventListener("click", confirmRko);
+        $("closeModalBtn").addEventListener("click", closeModal);
+        els.modalRoot.addEventListener("click", (event) => {
+          if (event.target === els.modalRoot) closeModal();
+        });
+
+        $("turboBtn").addEventListener("click", activateTurbo);
+        $("shareBtn").addEventListener("click", shareReferral);
+        $("shareRefBtn").addEventListener("click", shareReferral);
+        $("copyRefBtn").addEventListener("click", copyReferral);
+        $("dailyClaimBtn").addEventListener("click", claimDailyCombo);
+        $("syncBtn").addEventListener("click", syncProgress);
+        $("syncProgressBtn").addEventListener("click", syncProgress);
+        $("refreshBoardBtn").addEventListener("click", () => {
+          renderLeaderboard();
+          showToast("Топ обновлён", "Ты в таблице. Дальше решают тапы.");
+          haptic("light");
+        });
+        $("launchTelegramBtn").addEventListener("click", () => openExternal(CONFIG.telegramAppUrl));
+
+        document.querySelectorAll(".tab-button").forEach((button) => {
+          button.addEventListener("click", () => switchView(button.dataset.view));
+        });
+
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") closeModal();
+          if (event.code === "Space" && activeView === "Tap") {
+            event.preventDefault();
+            handleTap({ clientX: window.innerWidth / 2, clientY: window.innerHeight / 2 });
+          }
+        });
+      }
+
+      function handleTap(event) {
+        const now = Date.now();
+        const isCombo = now - state.lastTapAt < 900;
+        state.combo = isCombo ? state.combo + 1 : 1;
+        state.lastTapAt = now;
+        state.maxCombo = Math.max(state.maxCombo, state.combo);
+        state.taps += 1;
+
+        const base = randomInt(11, 37);
+        const comboMult = state.combo >= 3 ? 2 : 1;
+        const turboMult = isTurboActive() ? 3 : 1;
+        const earned = base * comboMult * turboMult;
+
+        state.coins += earned;
+
+        if (state.combo >= 10) {
+          state.fireUntil = now + 4200;
+          state.dailyDone.bonus = true;
+        }
+
+        animateTap(event, earned);
+        saveState();
+        renderAll();
+        haptic(state.combo >= 10 ? "heavy" : "light");
+      }
+
+      function animateTap(event, earned) {
+        els.tapTarget.classList.remove("is-tapping");
+        void els.tapTarget.offsetWidth;
+        els.tapTarget.classList.add("is-tapping");
+
+        const x = event.clientX || window.innerWidth / 2;
+        const y = event.clientY || window.innerHeight / 2;
+        spawnPlus(x, y, earned);
+        spawnParticles(x, y, state.combo >= 10 ? 18 : 10);
+        spawnCashNotes();
+
+        window.setTimeout(() => els.tapTarget.classList.remove("is-tapping"), 230);
+      }
+
+      function spawnPlus(x, y, earned) {
+        const node = document.createElement("div");
+        node.className = "floating-plus";
+        node.textContent = `+${formatNumber(earned)}`;
+        node.style.left = `${x}px`;
+        node.style.top = `${y - 12}px`;
+        document.body.appendChild(node);
+        window.setTimeout(() => node.remove(), 820);
+      }
+
+      function spawnParticles(x, y, count) {
+        for (let i = 0; i < count; i += 1) {
+          const node = document.createElement("span");
+          const angle = Math.random() * Math.PI * 2;
+          const distance = randomInt(34, 96);
+          node.className = "particle";
+          node.style.left = `${x}px`;
+          node.style.top = `${y}px`;
+          node.style.setProperty("--dx", `${Math.cos(angle) * distance}px`);
+          node.style.setProperty("--dy", `${Math.sin(angle) * distance}px`);
+          document.body.appendChild(node);
+          window.setTimeout(() => node.remove(), 720);
+        }
+      }
+
+      function spawnCashNotes() {
+        const stage = document.querySelector(".character-stage");
+        const rect = stage.getBoundingClientRect();
+        for (let i = 0; i < 4; i += 1) {
+          const note = document.createElement("span");
+          note.className = "cash-note";
+          note.textContent = "RKO";
+          note.style.left = `${randomInt(rect.left + 70, rect.right - 110)}px`;
+          note.style.top = `${randomInt(rect.top + 80, rect.top + 160)}px`;
+          note.style.setProperty("--mx", `${randomInt(-90, 90)}px`);
+          note.style.setProperty("--my", `${randomInt(80, 170)}px`);
+          note.style.setProperty("--mr", `${randomInt(-80, 80)}deg`);
+          document.body.appendChild(note);
+          window.setTimeout(() => note.remove(), 840);
+        }
+      }
+
+      function activateTurbo() {
+        const now = Date.now();
+        if (state.turboUntil > now) {
+          showToast("Turbo уже активен", `Осталось ${Math.ceil((state.turboUntil - now) / 1000)} сек.`);
+          haptic("medium");
+          return;
+        }
+
+        state.turboUntil = now + 30000;
+        saveState();
+        renderAll();
+        showToast("Turbo Tap включён", "30 секунд каждый тап умножается на x3.");
+        haptic("heavy");
+      }
+
+      function shareReferral() {
+        state.dailyDone.friend = true;
+        const before = Math.floor(state.friends / 3);
+        state.friends += 1;
+        const after = Math.floor(state.friends / 3);
+        if (after > before) {
+          state.coins += 5000;
+          state.friendsBonus += 5000;
+          showToast("Реф-бонус в игре", "+5 000 VC за каждых 3 приглашения.");
+        }
+
+        saveState();
+        renderAll();
+
+        const url = getReferralLink();
+        const text = "Залетай в VibeDrop Kombat: тапай VibeCoins и проверь РКО-бонус.";
+        if (navigator.share) {
+          navigator.share({ title: "VibeDrop Kombat", text, url }).catch(() => openTelegramShare(url, text));
+        } else {
+          openTelegramShare(url, text);
+        }
+        haptic("medium");
+      }
+
+      function openTelegramShare(url, text) {
+        const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+        if (tg && tg.openTelegramLink) {
+          tg.openTelegramLink(shareUrl);
+        } else {
+          window.open(shareUrl, "_blank", "noopener,noreferrer");
+        }
+      }
+
+      async function copyReferral() {
+        const url = getReferralLink();
+        try {
+          await navigator.clipboard.writeText(url);
+          showToast("Ссылка скопирована", "Можно кидать в канал, чат или личку.");
+        } catch (error) {
+          showToast("Скопируй вручную", url);
+        }
+        haptic("light");
+      }
+
+      function openClaimModal() {
+        state.dailyDone.bonus = true;
+        saveState();
+        renderAll();
+        els.modalRoot.classList.add("open");
+        if (tg && tg.BackButton) tg.BackButton.show();
+        haptic("medium");
+      }
+
+      function closeModal() {
+        els.modalRoot.classList.remove("open");
+        if (tg && tg.BackButton && activeView === "Tap") tg.BackButton.hide();
+      }
+
+      function openBankLink() {
+        state.dailyDone.rko = true;
+        saveState();
+        renderAll();
+        openExternal(CONFIG.bankReferralUrl);
+        showToast("Переход к банку", "После реального открытия подтверждай начисления через backend.");
+        haptic("heavy");
+      }
+
+      function confirmRko() {
+        state.dailyDone.rko = true;
+
+        if (state.rkoClaimed) {
+          showToast("Уже начислено", "RKO boost можно забрать один раз на устройстве.");
+          haptic("medium");
+          return;
+        }
+
+        state.rkoClaimed = true;
+        state.coins += 15000;
+        saveState();
+        renderAll();
+        closeModal();
+        showTelegramAlert("Игровой RKO boost начислен: +15 000 VibeCoins. Реальный бонус подтверждается партнёром.");
+        haptic("heavy");
+      }
+
+      function claimDailyCombo() {
+        const done = dailyCombo.every((item) => state.dailyDone[item.id]);
+        if (!done || state.dailyClaimed) {
+          haptic("medium");
+          return;
+        }
+
+        state.dailyClaimed = true;
+        state.coins += 5000;
+        saveState();
+        renderAll();
+        showToast("Daily Combo закрыт", "+5 000 VibeCoins уже на балансе.");
+        haptic("heavy");
+      }
+
+      function syncProgress() {
+        els.syncState.textContent = "sync...";
+        haptic("light");
+        window.setTimeout(() => {
+          state.syncAt = new Date().toISOString();
+          saveState();
+          renderAll();
+          showToast("Синхронизация готова", "Демо-сервер принял прогресс локально.");
+          showTelegramAlert("Прогресс синхронизирован в демо-режиме.");
+        }, 620);
+      }
+
+      function switchView(view) {
+        activeView = view;
+        document.querySelectorAll(".view").forEach((node) => node.classList.toggle("active", node.id === `view${view}`));
+        document.querySelectorAll(".tab-button").forEach((button) => {
+          button.classList.toggle("active", button.dataset.view === view);
+        });
+
+        if (tg && tg.BackButton) {
+          if (view === "Tap" && !els.modalRoot.classList.contains("open")) tg.BackButton.hide();
+          else tg.BackButton.show();
+        }
+
+        renderAll();
+        haptic("light");
+      }
+
+      function renderAll() {
+        renderStats();
+        renderDailyCards();
+        renderLeaderboard();
+        renderFriends();
+      }
+
+      function renderStats() {
+        const level = getLevel(state.coins);
+        const next = levels[level.index + 1];
+        const currentMin = level.data.min;
+        const nextMin = next ? next.min : level.data.min;
+        const progress = next ? ((state.coins - currentMin) / (nextMin - currentMin)) * 100 : 100;
+        const comboMult = state.combo >= 3 ? 2 : 1;
+        const turboMult = isTurboActive() ? 3 : 1;
+        const fire = Date.now() < state.fireUntil;
+
+        els.coinCounter.textContent = formatNumber(state.coins);
+        els.levelLabel.textContent = level.data.name;
+        els.comboLabel.textContent = `x${comboMult * turboMult}`;
+        els.levelProgress.style.width = `${clamp(progress, 0, 100)}%`;
+        els.levelProgressText.textContent = next
+          ? `${formatNumber(state.coins - currentMin)} / ${formatNumber(nextMin - currentMin)}`
+          : `${formatNumber(state.coins)} / MAX`;
+        els.nextLevelText.textContent = next ? `до ${next.name}` : "максимум";
+        els.streakCounter.textContent = state.combo;
+        els.fireState.textContent = fire ? "fire" : "idle";
+        els.tapTarget.classList.toggle("is-fire", fire);
+        els.turboBadge.textContent = isTurboActive() ? `turbo ${Math.ceil((state.turboUntil - Date.now()) / 1000)}s` : "turbo off";
+        els.syncState.textContent = state.syncAt ? "synced" : "local";
+      }
+
+      function renderDailyCards() {
+        els.dailyCards.innerHTML = dailyCombo
+          .map((item) => {
+            const done = Boolean(state.dailyDone[item.id]);
+            return `
+              <button class="daily-card ${done ? "done" : ""} rounded-[22px] border border-white/10 bg-black/20 p-4 text-left active:scale-[0.99]" data-card="${item.id}" type="button">
+                <span class="flex items-start gap-3">
+                  <span class="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-signal/25 bg-signal/10 font-heading text-xl font-black text-signal-bright">${done ? "✓" : item.icon}</span>
+                  <span>
+                    <span class="block font-heading text-lg font-black">${item.title}</span>
+                    <span class="mt-1 block text-sm leading-snug text-slate-400">${item.text}</span>
+                  </span>
+                </span>
+              </button>
+            `;
+          })
+          .join("");
+
+        els.dailyCards.querySelectorAll(".daily-card").forEach((card) => {
+          card.addEventListener("click", () => {
+            state.dailyDone[card.dataset.card] = true;
+            saveState();
+            renderAll();
+            haptic("light");
+          });
+        });
+
+        const done = dailyCombo.every((item) => state.dailyDone[item.id]);
+        els.dailyClaimBtn.disabled = !done || state.dailyClaimed;
+        els.dailyClaimBtn.textContent = state.dailyClaimed ? "DAILY COMBO ЗАБРАН" : "ЗАБРАТЬ DAILY COMBO";
+      }
+
+      function renderLeaderboard() {
+        const user = getTelegramName();
+        const rows = [...seededLeaders, [user, state.coins]]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10);
+
+        els.leaderboard.innerHTML = rows
+          .map(([name, coins], index) => {
+            const isUser = name === user;
+            return `
+              <div class="flex items-center justify-between gap-3 rounded-[18px] border ${isUser ? "border-signal/45 bg-signal/10" : "border-white/10 bg-black/20"} px-3 py-3">
+                <div class="flex min-w-0 items-center gap-3">
+                  <span class="grid h-9 w-9 shrink-0 place-items-center rounded-2xl ${index < 3 ? "bg-signal text-[#171005]" : "bg-white/10 text-slate-300"} font-heading font-black">#${index + 1}</span>
+                  <span class="min-w-0">
+                    <span class="block truncate font-heading text-base font-black">${escapeHtml(name)}</span>
+                    <span class="block font-mono text-[10px] uppercase text-slate-500">${isUser ? "это ты" : "online"}</span>
+                  </span>
+                </div>
+                <span class="shrink-0 font-mono text-sm font-bold text-signal-bright">${formatNumber(coins)}</span>
+              </div>
+            `;
+          })
+          .join("");
+      }
+
+      function renderFriends() {
+        const url = getReferralLink();
+        els.refLink.textContent = url;
+        els.friendsMini.textContent = `${state.friends % 3}/3 друзей`;
+        els.friendsCount.textContent = formatNumber(state.friends);
+        els.friendsBonus.textContent = formatNumber(state.friendsBonus);
+        els.friendRank.textContent = `#${Math.max(1, 12 - Math.floor(state.friends / 2))}`;
+      }
+
+      function getLevel(coins) {
+        let index = 0;
+        for (let i = 0; i < levels.length; i += 1) {
+          if (coins >= levels[i].min) index = i;
+        }
+        return { index, data: levels[index] };
+      }
+
+      function getReferralLink() {
+        const user = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
+        const id = user && user.id ? user.id : "local";
+        return `https://t.me/${CONFIG.botUsername}?startapp=ref_${encodeURIComponent(id)}`;
+      }
+
+      function getTelegramName() {
+        const user = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
+        if (!user) return "You";
+        return user.username ? `@${user.username}` : user.first_name || "You";
+      }
+
+      function isTurboActive() {
+        return Date.now() < state.turboUntil;
+      }
+
+      function startTicker() {
+        const tick = () => {
+          renderStats();
+          rafId = window.requestAnimationFrame(tick);
+        };
+        rafId = window.requestAnimationFrame(tick);
+      }
+
+      function showToast(title, text) {
+        els.toastTitle.textContent = title;
+        els.toastText.textContent = text;
+        els.toast.classList.add("show");
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => els.toast.classList.remove("show"), 2600);
+      }
+
+      function showTelegramAlert(message) {
+        if (tg && tg.showAlert) {
+          tg.showAlert(message);
+        } else {
+          showToast("VibeDrop", message);
+        }
+      }
+
+      function openExternal(url) {
+        if (tg && tg.openLink) {
+          tg.openLink(url, { try_instant_view: false });
+        } else {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+      }
+
+      function haptic(level) {
+        if (!tg || !tg.HapticFeedback) return;
+        const feedback = tg.HapticFeedback;
+        if (level === "heavy") feedback.impactOccurred("heavy");
+        else if (level === "medium") feedback.impactOccurred("medium");
+        else feedback.impactOccurred("light");
+      }
+
+      function formatNumber(value) {
+        return Math.floor(value).toLocaleString("ru-RU");
+      }
+
+      function randomInt(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+    </script>
+  </body>
+</html>

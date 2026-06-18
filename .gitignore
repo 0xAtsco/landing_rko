@@ -2,6 +2,11 @@
 
 # dependencies
 /node_modules
+__pycache__/
+*.pyc
+telegram_bot/.venv/
+telegram_bot/data/
+telegram_bot/google-service-account.json
 /.pnp
 .pnp.*
 .yarn/*
@@ -23,6 +28,7 @@
 # misc
 .DS_Store
 *.pem
+.rko-data/
 
 # debug
 npm-debug.log*
@@ -39,3 +45,4 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.gstack/

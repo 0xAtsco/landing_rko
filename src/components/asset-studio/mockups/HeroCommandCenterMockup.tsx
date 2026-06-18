@@ -31,7 +31,7 @@ export function HeroCommandCenterMockup() {
                 Telegram traffic command center
               </div>
               <div className="mt-4 text-4xl font-semibold leading-tight text-white">
-                Пост / реклама → лендинг → бот → CRM → менеджер
+                Пост / реклама → сайт → бот → CRM → менеджер
               </div>
             </GlassPanel>
           </div>
