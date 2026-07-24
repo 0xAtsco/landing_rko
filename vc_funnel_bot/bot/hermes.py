@@ -132,7 +132,7 @@ async def send_material_bundle(
             },
         )
 
-    if delivered:
+    if delivered and not (lead.call_requested or lead.sales_notified):
         await storage.mark_materials_sent(lead.telegram_id)
 
     return BundleDelivery(

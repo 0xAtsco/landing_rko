@@ -580,6 +580,66 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restarted.cjm, "hermes_bottleneck")
         self.assertEqual(restarted.latest_start_payload, "am_p01_video")
 
+    async def test_returning_terminal_lead_can_receive_hermes_bundle(self) -> None:
+        lead = await self.create_lead("yt_video_0704_description")
+        await self.storage.mark_call_requested(lead.telegram_id)
+        await self.storage.mark_sales_notified(lead.telegram_id)
+        restarted = await self.storage.upsert_lead(
+            telegram_id=lead.telegram_id,
+            username="returning",
+            first_name="Тест",
+            source=parse_start_payload(HERMES_PAYLOAD),
+        )
+        self.assertEqual(
+            restarted.raw_start_payload,
+            "yt_video_0704_description",
+        )
+        self.assertEqual(restarted.entry_mode, "external_materials")
+        self.assertEqual(restarted.latest_start_payload, HERMES_PAYLOAD)
+
+        await self.load_materials(
+            "hermes_find_business_guide",
+            "hermes_audit_workbook",
+        )
+        renderer = FakeRenderer()
+        await route_entry(
+            renderer,
+            self.storage,
+            self.settings,
+            restarted,  # type: ignore[arg-type]
+        )
+        self.assertIn(
+            "Где вы сейчас застряли?",
+            renderer.screens[-1]["text"],
+        )
+
+        fresh = await self.complete(
+            restarted,
+            "hb:stage:find",
+            "hb:asset:warm",
+            renderer,
+        )
+        self.assertEqual(
+            [
+                item["material"].material_key
+                for item in renderer.materials
+            ],
+            [
+                "hermes_find_business_guide",
+                "hermes_audit_workbook",
+            ],
+        )
+        self.assertEqual(fresh.raw_start_payload, "yt_video_0704_description")
+        self.assertEqual(fresh.lead_status, "sales_notified")
+        self.assertTrue(fresh.sales_notified)
+        self.assertEqual(
+            await self.storage.count_events(
+                lead.telegram_id,
+                "sales_notified",
+            ),
+            1,
+        )
+
     async def test_preview_readiness_and_stats(self) -> None:
         await self.load_materials("hermes_find_business_guide")
         await self.storage.upsert_material(

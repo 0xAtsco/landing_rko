@@ -547,11 +547,6 @@ async def route_callback(
     data: str,
     source_message: Message | None,
 ) -> None:
-    if is_terminal_lead(lead):
-        await storage.add_event(lead.telegram_id, "repeat_start_after_call_requested", {"callback": data})
-        await show_returning_after_sales(renderer, lead, settings, source_message)
-        return
-
     if data.startswith("hb:"):
         await route_hermes_callback(
             renderer,
@@ -561,6 +556,11 @@ async def route_callback(
             data,
             source_message,
         )
+        return
+
+    if is_terminal_lead(lead):
+        await storage.add_event(lead.telegram_id, "repeat_start_after_call_requested", {"callback": data})
+        await show_returning_after_sales(renderer, lead, settings, source_message)
         return
 
     if data in MATERIAL_CALLBACKS:
@@ -643,17 +643,17 @@ async def route_entry(
             },
         )
 
-    if is_terminal_lead(lead):
-        await show_returning_after_sales(renderer, lead, settings, source_message)
-        return
-
-    if lead.entry_mode == "hermes_bottleneck":
+    if entry_source.entry_mode == "hermes_bottleneck":
         await show_hermes_start(
             renderer,
             storage,
             lead,
             source_message,
         )
+        return
+
+    if is_terminal_lead(lead):
+        await show_returning_after_sales(renderer, lead, settings, source_message)
         return
 
     if lead.source_type == "unknown" and lead.raw_start_payload:
@@ -720,16 +720,28 @@ async def show_hermes_start(
     lead: Lead,
     source_message: Message | None,
 ) -> None:
-    lead = await storage.set_status(
-        lead.telegram_id,
-        "qual_started",
-        "hermes_route_started",
-        {
-            "payload": lead.raw_start_payload,
-            "post_topic": lead.post_topic,
-        },
-        temperature="warm",
-    )
+    payload = lead.latest_start_payload or lead.raw_start_payload
+    if is_terminal_lead(lead):
+        await storage.add_event(
+            lead.telegram_id,
+            "hermes_route_started",
+            {
+                "payload": payload,
+                "post_topic": lead.post_topic,
+                "returning_terminal_lead": True,
+            },
+        )
+    else:
+        lead = await storage.set_status(
+            lead.telegram_id,
+            "qual_started",
+            "hermes_route_started",
+            {
+                "payload": payload,
+                "post_topic": lead.post_topic,
+            },
+            temperature="warm",
+        )
     await renderer.render_screen(
         lead=lead,
         text=f"{HERMES_START_MESSAGE}\n\n{HERMES_QUESTION_1}",
@@ -828,13 +840,20 @@ async def route_hermes_callback(
                 "segment": lead.segment,
             },
         )
-        await start_review_request(
-            renderer,
-            storage,
-            lead,
-            HERMES_APPLY_PROMPT,
-            source_message,
-        )
+        if is_terminal_lead(lead):
+            await renderer.render_screen(
+                lead=lead,
+                text=HERMES_APPLY_PROMPT,
+                source_message=source_message,
+            )
+        else:
+            await start_review_request(
+                renderer,
+                storage,
+                lead,
+                HERMES_APPLY_PROMPT,
+                source_message,
+            )
         return
 
     await storage.add_event(
@@ -874,7 +893,8 @@ async def complete_hermes_route(
         track,
     )
     lead = await storage.get_lead(lead.telegram_id) or lead
-    lead = await storage.mark_qual_completed(lead.telegram_id)
+    if not is_terminal_lead(lead):
+        lead = await storage.mark_qual_completed(lead.telegram_id)
     await storage.add_event(
         lead.telegram_id,
         "hermes_route_completed",
