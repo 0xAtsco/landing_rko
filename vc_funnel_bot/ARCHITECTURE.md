@@ -548,11 +548,12 @@ Env:       /opt/landing_rko/current/vc_funnel_bot/.env
 
 Перед публикацией первых трёх постов нужно загрузить содержимое материалов `am_p01_video`, `am_p02_map` и `am_p03_demo`. Invite URL канала уже настроен.
 
-Hermes-итерация на 24 июля реализована и проверяется в
-`work/server-prod-next`, но ещё не merged/deployed. Production merge,
-backup, server tests, importer и restart выполняются только после отдельного
-явного одобрения. Первая ожидаемая readiness после importer: `8/11`; три
-setup-видео остаются отдельным контентным обязательством.
+Hermes-итерация развернута в production 24 июля 2026 года на commit
+`c6062b0`. Перед деплоем созданы backup кода и SQLite, на сервере пройдены
+63 теста, восемь готовых файлов загружены через manifest importer, а
+`vc-funnel-bot.service` перезапущен и работает в long polling. Фактическая
+readiness: `8/11`; три setup-видео остаются отдельным контентным
+обязательством и до загрузки используют support-фолбэк.
 
 Операционные команды на сервере:
 
