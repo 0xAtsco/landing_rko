@@ -18,7 +18,7 @@
 ## Загрузка материалов
 
 - [ ] Загрузить 4 PDF.
-- [ ] Загрузить `Hermes_Audit_Prompt.txt`.
+- [ ] Загрузить `Hermes_Audit_Prompt.pdf`.
 - [ ] Загрузить `Hermes_Audit_Workbook.xlsx`.
 - [ ] Загрузить шаблоны сообщений и сценарий созвона.
 - [ ] Добавить видео Windows.

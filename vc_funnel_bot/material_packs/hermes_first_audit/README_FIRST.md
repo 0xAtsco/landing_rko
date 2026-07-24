@@ -11,10 +11,10 @@
 - `02_Offer_dlya_biznesa.pdf` — сформировать безопасный оффер.
 - `03_Hermes_Audit_Kit.pdf` — провести аудит.
 - `04_Ot_otcheta_k_sdelke_i_RKO.pdf` — показать результат и перейти к пилоту / РКО при реальной потребности.
-- `Hermes_Audit_Prompt.txt` — готовый промпт.
+- `Hermes_Audit_Prompt.pdf` — готовый промпт.
 - `Hermes_Audit_Workbook.xlsx` — лид-лист, рабочая таблица, сводка и сценарий созвона.
-- `Hermes_Outreach_Templates.md` — сообщения бизнесу.
-- `Hermes_Result_Presentation_Script.md` — сценарий презентации.
+- `Hermes_Outreach_Templates.pdf` — сообщения бизнесу.
+- `Hermes_Result_Presentation_Script.pdf` — сценарий презентации.
 
 ### Для Codex / разработчика
 - `bot_flow_spec.json` — точные тексты, callbacks и bundles.
