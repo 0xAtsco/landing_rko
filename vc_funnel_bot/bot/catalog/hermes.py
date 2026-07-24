@@ -1,0 +1,101 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+
+SPEC_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "material_packs"
+    / "hermes_first_audit"
+    / "bot_flow_spec.json"
+)
+
+with SPEC_PATH.open(encoding="utf-8") as spec_file:
+    HERMES_FLOW_SPEC: dict[str, Any] = json.load(spec_file)
+
+HERMES_FLOW_VERSION = int(HERMES_FLOW_SPEC["version"])
+HERMES_PAYLOAD = str(HERMES_FLOW_SPEC["payload"])
+HERMES_ENTRY_MODE = str(HERMES_FLOW_SPEC["entry_mode"])
+HERMES_START_MESSAGE = str(HERMES_FLOW_SPEC["start_message"])
+HERMES_QUESTION_1 = str(HERMES_FLOW_SPEC["question_1"]["text"])
+HERMES_QUESTION_2_GENERAL = str(HERMES_FLOW_SPEC["question_2_general"]["text"])
+HERMES_QUESTION_2_SETUP = str(HERMES_FLOW_SPEC["question_2_setup"]["text"])
+HERMES_APPLY_PROMPT = str(HERMES_FLOW_SPEC["apply_prompt"])
+
+HERMES_STAGE_OPTIONS = tuple(HERMES_FLOW_SPEC["question_1"]["options"])
+HERMES_GENERAL_CONTEXT_OPTIONS = tuple(
+    HERMES_FLOW_SPEC["question_2_general"]["options"]
+)
+HERMES_SETUP_CONTEXT_OPTIONS = tuple(
+    HERMES_FLOW_SPEC["question_2_setup"]["options"]
+)
+
+HERMES_STAGE_BY_CALLBACK = {
+    option["callback"]: option["pain"] for option in HERMES_STAGE_OPTIONS
+}
+HERMES_GENERAL_CONTEXT_BY_CALLBACK = {
+    option["callback"]: option["segment"]
+    for option in HERMES_GENERAL_CONTEXT_OPTIONS
+}
+HERMES_SETUP_CONTEXT_BY_CALLBACK = {
+    option["callback"]: option["segment"]
+    for option in HERMES_SETUP_CONTEXT_OPTIONS
+}
+
+HERMES_BUNDLES = {
+    track: tuple(material_keys)
+    for track, material_keys in HERMES_FLOW_SPEC["bundles"].items()
+}
+HERMES_MATERIAL_KEYS = tuple(
+    dict.fromkeys(
+        material_key
+        for material_keys in HERMES_BUNDLES.values()
+        for material_key in material_keys
+    )
+)
+
+HERMES_RESULT_TEXTS = {
+    "find_business": (
+        "Ваш следующий шаг — выбрать первые 10 компаний, где продажи уже идут "
+        "в переписках. Начните не с масштаба, а с тёплого доступа и "
+        "наблюдаемой проблемы."
+    ),
+    "offer": (
+        "Ваш следующий шаг — предложить узкий бесплатный тест: аудит 10 "
+        "обезличенных диалогов с конкретным отчётом, без доступа к аккаунтам "
+        "и без обещаний роста продаж."
+    ),
+    "build": (
+        "Ваш следующий шаг — провести один полный аудит: подготовить данные, "
+        "запустить проверку по критериям, верифицировать выводы и собрать "
+        "управленческую сводку."
+    ),
+    "deal": (
+        "Ваш следующий шаг — показать три подтверждённых факта, согласовать "
+        "одну приоритетную проблему и предложить измеримый пилот на 7 дней."
+    ),
+}
+
+HERMES_SETUP_READY_TEXT = (
+    "Покажем инструкцию именно для вашего этапа. Если после неё ошибка "
+    "останется, отправьте её текстом или скриншотом — без токенов, паролей "
+    "и платёжных данных."
+)
+HERMES_SETUP_FALLBACK_TEXT = (
+    "Видео для этого этапа пока не загружено. Нажмите «Разобрать мою "
+    "ситуацию» и отправьте текст или скриншот ошибки — без токенов, паролей "
+    "и платёжных данных."
+)
+
+
+def hermes_track(pain: str, segment: str) -> str:
+    if pain != "setup":
+        return pain
+    return {
+        "windows": "setup_windows",
+        "macos": "setup_macos",
+        "model_connection": "setup_model",
+        "other_setup": "setup_other",
+    }.get(segment, "setup_other")

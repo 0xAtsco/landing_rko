@@ -1,0 +1,139 @@
+{
+  "version": 1,
+  "payload": "am_hermes_video_route",
+  "entry_mode": "hermes_bottleneck",
+  "source": "andrey_main",
+  "start_message": "Вы посмотрели, как Hermes работает. Теперь за 60 секунд определим ваше узкое звено и дадим один готовый следующий шаг, который можно выполнить сегодня.",
+  "question_1": {
+    "text": "Где вы сейчас застряли?",
+    "options": [
+      {
+        "callback": "hb:stage:find",
+        "label": "🧭 Не знаю, кому предложить",
+        "pain": "find_business"
+      },
+      {
+        "callback": "hb:stage:offer",
+        "label": "💬 Есть бизнес, не знаю, что предложить",
+        "pain": "offer"
+      },
+      {
+        "callback": "hb:stage:build",
+        "label": "🛠 Есть задача, не могу собрать решение",
+        "pain": "build"
+      },
+      {
+        "callback": "hb:stage:deal",
+        "label": "💰 Решение есть, не понимаю, как продать",
+        "pain": "deal"
+      },
+      {
+        "callback": "hb:stage:setup",
+        "label": "⚙️ Hermes не запустился",
+        "pain": "setup"
+      }
+    ]
+  },
+  "question_2_general": {
+    "text": "Что у вас уже есть?",
+    "options": [
+      {
+        "callback": "hb:asset:warm",
+        "label": "Есть знакомые предприниматели",
+        "segment": "warm_business_contacts"
+      },
+      {
+        "callback": "hb:asset:rko",
+        "label": "Есть РКО-клиенты или база",
+        "segment": "rko_base"
+      },
+      {
+        "callback": "hb:asset:channel",
+        "label": "Есть канал или аудитория",
+        "segment": "channel_audience"
+      },
+      {
+        "callback": "hb:asset:none",
+        "label": "Пока ничего — нужен маршрут",
+        "segment": "no_asset"
+      }
+    ]
+  },
+  "question_2_setup": {
+    "text": "На каком этапе возникла проблема?",
+    "options": [
+      {
+        "callback": "hb:setup:windows",
+        "label": "Windows: установка / запуск",
+        "segment": "windows"
+      },
+      {
+        "callback": "hb:setup:mac",
+        "label": "macOS: установка / запуск",
+        "segment": "macos"
+      },
+      {
+        "callback": "hb:setup:model",
+        "label": "Модель / подписка не подключается",
+        "segment": "model_connection"
+      },
+      {
+        "callback": "hb:setup:other",
+        "label": "Другая ошибка",
+        "segment": "other_setup"
+      }
+    ]
+  },
+  "bundles": {
+    "find_business": [
+      "hermes_find_business_guide",
+      "hermes_audit_workbook"
+    ],
+    "offer": [
+      "hermes_offer_pack",
+      "hermes_outreach_templates"
+    ],
+    "build": [
+      "hermes_audit_kit",
+      "hermes_audit_prompt",
+      "hermes_audit_workbook"
+    ],
+    "deal": [
+      "hermes_result_to_deal",
+      "hermes_presentation_script"
+    ],
+    "setup_windows": [
+      "hermes_setup_windows_video"
+    ],
+    "setup_macos": [
+      "hermes_setup_macos_video"
+    ],
+    "setup_model": [
+      "hermes_model_connection_video"
+    ],
+    "setup_other": []
+  },
+  "post_result_buttons": [
+    {
+      "callback": "hb:channel",
+      "label": "📲 Смотреть примеры в канале"
+    },
+    {
+      "callback": "hb:apply",
+      "label": "🎯 Разобрать мою ситуацию"
+    }
+  ],
+  "apply_prompt": "Опишите в 3 пунктах: 1) кому хотите предложить решение; 2) где сейчас проблема; 3) что уже установлено или собрано. Не отправляйте паспортные, банковские или платёжные данные.",
+  "events": [
+    "hermes_route_started",
+    "hermes_bottleneck_selected",
+    "hermes_context_selected",
+    "hermes_route_completed",
+    "hermes_bundle_started",
+    "hermes_material_delivered",
+    "hermes_channel_clicked",
+    "hermes_apply_clicked",
+    "application_context_submitted",
+    "sales_notified"
+  ]
+}
