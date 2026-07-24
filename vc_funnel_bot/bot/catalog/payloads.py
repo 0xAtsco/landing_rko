@@ -19,6 +19,30 @@ class PayloadDefinition:
 
 
 PAYLOAD_CATALOG = {
+    "youtube_hermes": PayloadDefinition(
+        payload="youtube_hermes",
+        group="youtube",
+        title="Hermes из YouTube",
+        entry_mode="hermes_bottleneck",
+        post_id="hermes",
+        post_slug="hermes",
+        post_topic="Hermes",
+        cta_type="bottleneck_route",
+        source="youtube",
+        campaign="hermes",
+    ),
+    "telegram_hermes": PayloadDefinition(
+        payload="telegram_hermes",
+        group="telegram",
+        title="Hermes из Telegram",
+        entry_mode="hermes_bottleneck",
+        post_id="hermes",
+        post_slug="hermes",
+        post_topic="Hermes",
+        cta_type="bottleneck_route",
+        source="telegram",
+        campaign="hermes",
+    ),
     "am_hermes_video_route": PayloadDefinition(
         payload="am_hermes_video_route",
         group="andrey_main",

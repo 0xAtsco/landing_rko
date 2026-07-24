@@ -206,6 +206,8 @@ def parse_start_payload(raw_payload: str | None) -> SourceInfo:
 
     tokens = _tokens(raw)
     source_type = _source_type(tokens)
+    if source_type == "unknown":
+        source_type = "direct"
     cta_type = _cta_type(tokens)
     content_id = _content_id(tokens)
     source_channel = _source_channel(tokens, source_type)

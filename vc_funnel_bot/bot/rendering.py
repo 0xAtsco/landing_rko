@@ -6,7 +6,7 @@ from typing import Literal
 from aiogram import Bot
 from aiogram.enums import ChatAction
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
-from aiogram.types import InlineKeyboardMarkup, Message
+from aiogram.types import InlineKeyboardMarkup, Message, ReplyKeyboardMarkup
 
 from .config import Settings
 from .materials import ResolvedMaterial
@@ -35,7 +35,7 @@ class BotScreenRenderer:
         *,
         lead: Lead,
         text: str,
-        reply_markup: InlineKeyboardMarkup | None = None,
+        reply_markup: InlineKeyboardMarkup | ReplyKeyboardMarkup | None = None,
         source_message: Message | None = None,
         mode: Literal["edit_or_send", "send_new"] = "edit_or_send",
         cleanup: bool = True,

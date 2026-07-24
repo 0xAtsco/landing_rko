@@ -6,7 +6,11 @@
 
 ## Что делает
 
-Бот принимает трафик по индивидуальным deep links, сохраняет атрибуцию каждого поста, сразу выдаёт обещанный материал или запускает нужный сценарий. После материала пользователь одним нажатием переходит в канал или проходит двухвопросный подбор. Продажники получают заявку только после текстового контекста.
+Бот принимает трафик из YouTube и Telegram, за два вопроса определяет узкое
+звено, выдаёт подходящие материалы и предлагает один следующий шаг —
+персональный план запуска. Менеджеры получают заявку только после явного
+нажатия кнопки, выбора срока и текстового контекста. Помощь с запуском
+Hermes отделена от коммерческих заявок.
 
 P0 работает без LLM, voice, STT, Google Sheets и follow-up scheduler.
 
@@ -61,43 +65,35 @@ VC_DEBUG=false
 
 ## Deep Links
 
-Боевые ссылки для основного канала Андрея:
+Публично используются только две ссылки:
 
 ```text
-https://t.me/viberko_bot?start=am_hermes_video_route
-https://t.me/viberko_bot?start=am_p01_video
-https://t.me/viberko_bot?start=am_p02_map
-https://t.me/viberko_bot?start=am_p03_demo
-https://t.me/viberko_bot?start=am_p04_route
-https://t.me/viberko_bot?start=am_p05_apply
+YouTube:  https://t.me/viberko_bot?start=youtube_hermes
+Telegram: https://t.me/viberko_bot?start=telegram_hermes
 ```
 
-| Payload | Первый экран | Material key |
-|---|---|---|
-| `am_hermes_video_route` | Hermes Bottleneck Router: два вопроса | bundle по результату |
-| `am_p01_video` | основное видео | `am_p01_video` |
-| `am_p02_map` | схема связки | `am_p02_map` |
-| `am_p03_demo` | демонстрация | `am_p03_demo` |
-| `am_p04_route` | первый вопрос персонального маршрута | `am_p04_route` |
-| `am_p05_apply` | запрос текстового контекста | `am_p05_apply` |
-
-Все ссылки сохраняют `source=andrey_main`, собственные `post_id`, `post_topic`, `campaign` и CTA.
+Обычный `/start` сохраняет `source=direct` и открывает тот же маршрут.
+Старые ссылки продолжают работать для обратной совместимости, но не
+показываются в `/links`.
 
 ### Hermes Bottleneck Router
 
 ```text
-am_hermes_video_route
+youtube_hermes / telegram_hermes / direct
   -> где застряли
   -> что уже есть / где сломалась установка
   -> один из пяти результатов
   -> bundle материалов
-  -> канал или явный запрос разбора
+  -> полная инструкция по отдельной кнопке
+  -> одна CTA на персональный план
+  -> срок + текстовый контекст
+  -> заявка менеджеру
 ```
 
 Business-ветки: `find_business`, `offer`, `build`, `deal`. Setup-ветка
 различает Windows, macOS, подключение модели и другую ошибку. Пока три
-setup-видео не загружены, бот честно предлагает support-фолбэк и принимает
-текст или скриншот только после кнопки `Разобрать мою ситуацию`.
+setup-видео не загружены, бот честно предлагает помощь с запуском и принимает
+текст или скриншот только после явного нажатия соответствующей кнопки.
 
 Источник правды по текстам, callbacks и bundles:
 `material_packs/hermes_first_audit/bot_flow_spec.json`.
@@ -226,9 +222,10 @@ Flow: post CTA -> bot -> contextual material / contextual diagnostic / review re
 - `/material_preview <material_key>`
 
 Для Hermes весь исходный пакет хранится в
-`material_packs/hermes_first_audit/`. В Telegram регистрируются восемь
-готовых файлов из `material_upload_manifest.csv`; playbook и служебные файлы
-не загружаются в пользовательские bundles.
+`material_packs/hermes_first_audit/`. В Telegram регистрируются девять
+готовых файлов из `material_upload_manifest.csv`. Полная инструкция имеет
+ключ `hermes_full_playbook` и выдаётся только по отдельной кнопке; служебные
+файлы пользователю не отправляются.
 
 Проверка manifest без изменений:
 
@@ -244,7 +241,9 @@ python -m bot.material_importer --apply --upload-chat-id <chat_id>
 
 Повторный запуск пропускает уже загруженные активные материалы. Для
 принудительной замены используется `--force`. Текущую готовность показывает
-`/hermes_readiness`: ожидаемая первая итерация — `8/11`.
+`/hermes_readiness`. После регистрации полной инструкции ожидаемая
+готовность — `9/12`; три
+setup-видео остаются незагруженными.
 
 Рекомендация: использовать `/admin_materials` и `/material_add`, потому что так можно хранить разные материалы под разные deep links.
 
@@ -258,13 +257,16 @@ Sales chat показывает только горячих hand-raisers.
 vc_funnel_bot/data/vc_funnel.db
 ```
 
-Через Telegram admin:
-- `/leads` — последние пользователи;
-- `/lead <telegram_id>` — карточка пользователя;
-- `/events <telegram_id>` — путь пользователя;
-- `/stats` — статистика;
-- `/hermes_readiness` — готовность Hermes material keys и bundles;
-- `/export_leads` — CSV выгрузка.
+Главное admin-меню содержит только:
+
+- `Лиды`;
+- `Статистика`;
+- `Материалы`;
+- `Ссылки`.
+
+`/leads` показывает источник, узкое звено и статус, `/lead <telegram_id>` —
+контакт, ситуацию, срок, контекст и выданные материалы. Технические payload,
+CJM и внутренние события в рабочей карточке не отображаются.
 
 Admin-команды доступны только ID из `VC_ADMIN_IDS`.
 
@@ -296,44 +298,34 @@ help - Помощь
 
 Обработчики `/materials`, `/diagnostic`, `/access` и `/review` сохранены для обратной совместимости, но в публичное меню BotFather не добавляются.
 
-Admin commands не добавляй в public menu, если команды не scoped to admins:
+Публичное меню Telegram содержит только `/start`, `/menu` и `/help`.
+Технические и legacy-команды не публикуются. Главное admin-меню:
 
 ```text
-admin - Админ-панель
-links - Deep links
-preview - Предпросмотр payload
-testlink - Ссылка для payload
-admin_materials - Материалы
-hermes_readiness - Готовность Hermes bundles
-leads - Пользователи
-lead - Карточка пользователя
-events - События пользователя
-stats - Статистика
-export_leads - CSV лидов
-admin_reset - Сбросить пользователя
+Лиды
+Статистика
+Материалы
+Ссылки
 ```
 
 ## CJM
 
-Посты Андрея:
+Основной маршрут:
 
 ```text
-пост -> индивидуальный deep link -> обещанный материал -> канал «ИИ-связки»
-                                                   -> 2 вопроса -> контекст -> Игорь и созвон
-```
-
-Hermes:
-
-```text
-видео -> am_hermes_video_route -> 2 вопроса -> result -> bundle
-                                                -> канал
-                                                -> context / support -> команда
+YouTube / Telegram / direct
+-> 2 вопроса
+-> вывод и bundle
+-> полная инструкция по кнопке
+-> одна CTA на персональный план
+-> срок + контекст
+-> менеджер команды
 ```
 
 Прямой вход:
 
 ```text
-/start -> Как работает связка / Перейти в канал / Хочу собрать свою связку
+/start -> основной двухвопросный маршрут Hermes
 ```
 
 YouTube materials:
@@ -366,17 +358,15 @@ Private channel:
 post CTA -> bot deep link -> 0-2 questions or review context -> sales only after explicit context
 ```
 
-Пустой `/start` показывает универсальный VC-экран.
+Пустой `/start` показывает основной маршрут Hermes.
 
 ## User Journey / Bot UX
 
 Private channel is a warm-up layer.
 
-Bot has two roles:
-1. before channel — materials, access and mini-diagnostic gate;
-2. after channel — conversion layer for contextual CTA clicks from posts.
-
-Пост Андрея -> конкретный материал или маршрут -> канал / явная заявка -> Игорь.
+Бот выдаёт первый полезный результат максимум после двух вопросов, а затем
+принимает либо осознанную коммерческую заявку, либо отдельный запрос помощи
+с запуском.
 
 Core rule:
 first value, then next step.
@@ -471,17 +461,21 @@ application_context_submitted
 sales_notified
 ```
 
-Hermes добавляет события:
+Основной маршрут использует события:
 
 ```text
-hermes_route_started
-hermes_bottleneck_selected
-hermes_context_selected
-hermes_bundle_started
-hermes_material_delivered
-hermes_route_completed
-hermes_channel_clicked
-hermes_apply_clicked
+route_started
+bottleneck_selected
+situation_selected
+bundle_delivered
+full_playbook_requested
+application_started
+urgency_selected
+application_submitted
+sales_notified
+support_requested
+support_notified
+channel_clicked
 ```
 
 Обычная URL-кнопка в канал открывается напрямую. Telegram не присылает боту событие о клике или фактическом вступлении, поэтому событие `channel_joined` не создаётся.
@@ -497,14 +491,13 @@ hermes_apply_clicked
 
 Продажнику отправляются:
 
-- пользователь прошёл персональный маршрут и написал контекст;
+- пользователь нажал кнопку персонального плана, выбрал срок и написал контекст;
 - пользователь пришёл через `am_p05_apply` и написал контекст;
 - пользователь пришёл через legacy CTA `call` / `want_vc` и написал контекст.
-- пользователь завершил Hermes apply и написал контекст;
-- setup-support после явного клика и текста или скриншота ошибки.
 
-Setup-support получает отдельный заголовок и `intent=setup_support`; он не
-помечается как готовый sales lead и не устанавливает `call_requested`.
+Помощь с запуском получает отдельный заголовок,
+`intent=setup_help` и события `support_requested` / `support_notified`.
+Она не считается коммерческой заявкой и не использует `sales_notified`.
 
 Если `VC_SALES_CHAT_ID` не задан, бот не падает: сохраняет лид, пишет event `sales_notification_skipped_no_sales_chat` и сообщает пользователю, что заявка сохранена. Можно указать один chat id или несколько через запятую.
 

@@ -112,14 +112,12 @@ class RoutingTest(unittest.IsolatedAsyncioTestCase):
     async def test_diagnostic_starts_only_after_diagnostic_click(self) -> None:
         lead = await self.create_lead()
         renderer = FakeRenderer()
-        await route_entry(renderer, self.storage, self.settings, lead)  # type: ignore[arg-type]
-        fresh = await self.storage.get_lead(lead.telegram_id)
 
         await route_callback(
             renderer,  # type: ignore[arg-type]
             self.storage,
             self.settings,
-            fresh,  # type: ignore[arg-type]
+            lead,  # type: ignore[arg-type]
             CALLBACK_DIAGNOSTIC_START,
             None,
         )
@@ -270,7 +268,7 @@ class RoutingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(bot.sent_messages), 1)
         self.assertEqual(await self.storage.count_events(lead.telegram_id, "application_context_submitted"), 1)
         self.assertEqual(await self.storage.count_events(lead.telegram_id, "sales_notified"), 1)
-        self.assertIn("передан Игорю", str(renderer.screens[-1]["text"]))
+        self.assertIn("Заявка передана команде", str(renderer.screens[-1]["text"]))
 
     async def test_andrey_route_uses_two_choices_then_requests_context(self) -> None:
         lead = await self.create_lead("am_p04_route")
@@ -305,7 +303,7 @@ class RoutingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.storage.count_events(lead.telegram_id, "sales_notified"), 0)
         self.assertIn("Опишите в 2–3 предложениях", str(renderer.screens[-1]["text"]))
 
-    async def test_unknown_payload_opens_universal_start(self) -> None:
+    async def test_unknown_payload_opens_main_hermes_route(self) -> None:
         await self.storage.upsert_material(
             material_key="am_p01_video",
             title="Основное видео",
@@ -316,10 +314,16 @@ class RoutingTest(unittest.IsolatedAsyncioTestCase):
 
         await route_entry(renderer, self.storage, self.settings, lead)  # type: ignore[arg-type]
 
-        self.assertIn("Выберите следующий шаг", str(renderer.screens[-1]["text"]))
+        self.assertIn("Где вы сейчас застряли?", str(renderer.screens[-1]["text"]))
         self.assertEqual(
             button_texts(renderer.screens[-1]),
-            ["▶️ Как работает связка", "📲 Перейти в канал", "🎯 Хочу собрать свою связку"],
+            [
+                "🧭 Не знаю, кому предложить",
+                "💬 Есть бизнес, не знаю, что предложить",
+                "🛠 Есть задача, не могу собрать решение",
+                "💰 Решение есть, не понимаю, как довести до сделки",
+                "⚙️ Не получается запустить Hermes",
+            ],
         )
 
         fresh = await self.storage.get_lead(lead.telegram_id)
@@ -332,7 +336,7 @@ class RoutingTest(unittest.IsolatedAsyncioTestCase):
             None,
         )
         self.assertIn("Основное видео", str(renderer.screens[-1]["text"]))
-        self.assertEqual((await self.storage.get_lead(lead.telegram_id)).source, "unknown")
+        self.assertEqual((await self.storage.get_lead(lead.telegram_id)).source, "direct")
 
 
 if __name__ == "__main__":

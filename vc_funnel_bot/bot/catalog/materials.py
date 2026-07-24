@@ -58,6 +58,10 @@ MATERIAL_CATALOG = {
         material_key="hermes_model_connection_video",
         title="Подключение модели или подписки",
     ),
+    "hermes_full_playbook": MaterialDefinition(
+        material_key="hermes_full_playbook",
+        title="Полная инструкция по всей связке",
+    ),
     "am_p01_video": MaterialDefinition(
         material_key="am_p01_video",
         title="Основное видео: как работает ИИ-связка",

@@ -56,19 +56,19 @@ class MaterialImporterTest(unittest.IsolatedAsyncioTestCase):
         await self.storage.close()
         self.tmp.cleanup()
 
-    def test_pack_manifest_has_eight_ready_and_three_placeholders(self) -> None:
+    def test_pack_manifest_has_nine_ready_and_three_placeholders(self) -> None:
         items = load_manifest(DEFAULT_MANIFEST)
         validation = validate_manifest(items)
-        self.assertEqual(len(items), 11)
+        self.assertEqual(len(items), 12)
         self.assertEqual(
             sum(item.status == "ready" for item in validation),
-            8,
+            9,
         )
         self.assertEqual(
             sum(item.status == "placeholder" for item in validation),
             3,
         )
-        self.assertNotIn(
+        self.assertIn(
             "Hermes_First_Audit_Playbook.pdf",
             [item.file_name for item in items],
         )
@@ -82,7 +82,7 @@ class MaterialImporterTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             sum(item.status == "would_upload" for item in results),
-            8,
+            9,
         )
         self.assertEqual(
             sum(item.status == "placeholder" for item in results),

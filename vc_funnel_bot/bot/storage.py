@@ -36,6 +36,7 @@ LEAD_COLUMNS = [
     "segment",
     "pain",
     "intent",
+    "urgency",
     "application_context",
     "lead_status",
     "lead_temperature",
@@ -44,6 +45,8 @@ LEAD_COLUMNS = [
     "call_requested",
     "sales_notified",
     "sales_notified_at",
+    "support_notified",
+    "support_notified_at",
     "last_bot_screen_message_id",
     "bot_screen_message_ids",
     "created_at",
@@ -114,6 +117,7 @@ class VcStorage:
                 segment TEXT,
                 pain TEXT,
                 intent TEXT,
+                urgency TEXT,
                 application_context TEXT,
                 lead_status TEXT NOT NULL,
                 lead_temperature TEXT NOT NULL,
@@ -122,6 +126,8 @@ class VcStorage:
                 call_requested INTEGER NOT NULL DEFAULT 0,
                 sales_notified INTEGER NOT NULL DEFAULT 0,
                 sales_notified_at TEXT,
+                support_notified INTEGER NOT NULL DEFAULT 0,
+                support_notified_at TEXT,
                 last_bot_screen_message_id INTEGER,
                 bot_screen_message_ids TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL,
@@ -175,7 +181,10 @@ class VcStorage:
                 "post_id": "TEXT",
                 "post_slug": "TEXT",
                 "post_topic": "TEXT",
+                "urgency": "TEXT",
                 "application_context": "TEXT",
+                "support_notified": "INTEGER NOT NULL DEFAULT 0",
+                "support_notified_at": "TEXT",
                 "last_bot_screen_message_id": "INTEGER",
                 "bot_screen_message_ids": "TEXT NOT NULL DEFAULT '[]'",
             },
@@ -299,54 +308,66 @@ class VcStorage:
 
     async def stats(self) -> dict[str, Any]:
         result: dict[str, Any] = {}
-        for name, query in {
-            "total_leads": "SELECT COUNT(*) AS total FROM vc_funnel_leads",
-            "today_leads": "SELECT COUNT(*) AS total FROM vc_funnel_leads WHERE date(created_at) = date('now', 'localtime')",
-            "call_requested": "SELECT COUNT(*) AS total FROM vc_funnel_leads WHERE call_requested = 1",
-            "sales_notified": "SELECT COUNT(*) AS total FROM vc_funnel_leads WHERE sales_notified = 1",
-        }.items():
-            row = await (await self.db.execute(query)).fetchone()
-            result[name] = int(row["total"]) if row else 0
-
-        for key, column in {"by_status": "lead_status", "by_payload": "COALESCE(latest_start_payload, raw_start_payload, 'none')"}.items():
-            cursor = await self.db.execute(
-                f"SELECT {column} AS label, COUNT(*) AS total FROM vc_funnel_leads GROUP BY label ORDER BY total DESC LIMIT 20"
-            )
-            result[key] = [(row["label"], int(row["total"])) for row in await cursor.fetchall()]
-
-        hermes_events = (
-            "hermes_route_started",
-            "hermes_bottleneck_selected",
-            "hermes_context_selected",
-            "hermes_bundle_started",
-            "hermes_material_delivered",
-            "hermes_route_completed",
-            "hermes_channel_clicked",
-            "hermes_apply_clicked",
-            "application_context_submitted",
-            "sales_notified",
+        event_names = (
+            "route_started",
+            "situation_selected",
+            "bundle_delivered",
+            "full_playbook_requested",
+            "application_started",
+            "application_submitted",
+            "support_requested",
         )
-        placeholders = ", ".join("?" for _ in hermes_events)
+        placeholders = ", ".join("?" for _ in event_names)
         cursor = await self.db.execute(
             f"""
             SELECT events.event_type AS label,
                    COUNT(DISTINCT events.telegram_id) AS total
             FROM vc_funnel_events AS events
-            JOIN vc_funnel_leads AS leads
-              ON leads.telegram_id = events.telegram_id
-            WHERE leads.cjm = 'hermes_bottleneck'
-              AND events.event_type IN ({placeholders})
+            WHERE events.event_type IN ({placeholders})
             GROUP BY events.event_type
             """,
-            hermes_events,
+            event_names,
         )
-        counts = {
-            row["label"]: int(row["total"])
-            for row in await cursor.fetchall()
-        }
+        counts = {row["label"]: int(row["total"]) for row in await cursor.fetchall()}
+        result["starts_total"] = counts.get("route_started", 0)
+        for source, label in (
+            ("youtube", "YouTube"),
+            ("telegram", "Telegram"),
+        ):
+            row = await (
+                await self.db.execute(
+                    """
+                    SELECT COUNT(DISTINCT telegram_id) AS total
+                    FROM vc_funnel_events
+                    WHERE event_type = 'route_started'
+                      AND json_extract(event_payload_json, '$.source') = ?
+                    """,
+                    (label,),
+                )
+            ).fetchone()
+            result[f"starts_{source}"] = int(row["total"]) if row else 0
+        result["questions_completed"] = counts.get("situation_selected", 0)
+        result["bundle_delivered"] = counts.get("bundle_delivered", 0)
+        row = await (
+            await self.db.execute(
+                """
+                SELECT COUNT(DISTINCT telegram_id) AS total
+                FROM vc_funnel_events
+                WHERE event_type = 'full_playbook_requested'
+                  AND json_extract(
+                        event_payload_json,
+                        '$.delivery_status'
+                      ) = 'delivered'
+                """
+            )
+        ).fetchone()
+        result["playbook_opened"] = int(row["total"]) if row else 0
+        result["applications_started"] = counts.get("application_started", 0)
+        result["applications_submitted"] = counts.get("application_submitted", 0)
+        result["support_requests"] = counts.get("support_requested", 0)
         result["hermes_funnel"] = [
             (event_type, counts.get(event_type, 0))
-            for event_type in hermes_events
+            for event_type in event_names
         ]
         return result
 
@@ -459,7 +480,13 @@ class VcStorage:
         if source.raw_start_payload:
             updates["latest_start_payload"] = source.raw_start_payload
 
-        source_is_locked = existing.call_requested or existing.sales_notified
+        source_is_locked = (
+            existing.call_requested
+            or existing.sales_notified
+            or existing.support_notified
+            or existing.lead_status
+            in {"application_submitted", "support_requested"}
+        )
         can_update_source = (
             not source_is_locked
             and (
@@ -542,7 +569,7 @@ class VcStorage:
         return await self.set_status(telegram_id, "qual_started", "diagnostic_started", temperature="warm")
 
     async def save_answer(self, telegram_id: int, field: str, value: str) -> Lead:
-        if field not in {"segment", "pain", "intent"}:
+        if field not in {"segment", "pain", "intent", "urgency"}:
             raise ValueError(f"Unsupported answer field: {field}")
         await self._update_lead_fields(
             telegram_id,
@@ -552,9 +579,93 @@ class VcStorage:
             "segment": "segment_selected",
             "pain": "pain_selected",
             "intent": "intent_selected",
+            "urgency": "urgency_selected",
         }[field]
         await self.add_event(telegram_id, event_type, {"answer": value})
         return await self._refresh_temperature(telegram_id)
+
+    async def save_route_field(
+        self,
+        telegram_id: int,
+        field: str,
+        value: str,
+    ) -> Lead:
+        if field not in {"segment", "pain", "intent", "urgency"}:
+            raise ValueError(f"Unsupported route field: {field}")
+        await self._update_lead_fields(
+            telegram_id,
+            {
+                field: value,
+                "updated_at": self.now(),
+                "last_interaction_at": self.now(),
+            },
+        )
+        return await self._required_lead(telegram_id)
+
+    async def set_route_state(
+        self,
+        telegram_id: int,
+        status: str,
+        *,
+        intent: str | None = None,
+    ) -> Lead:
+        fields: dict[str, Any] = {
+            "lead_status": status,
+            "updated_at": self.now(),
+            "last_interaction_at": self.now(),
+        }
+        if intent is not None:
+            fields["intent"] = intent
+        await self._update_lead_fields(telegram_id, fields)
+        return await self._required_lead(telegram_id)
+
+    async def start_main_route(self, telegram_id: int) -> Lead:
+        await self._update_lead_fields(
+            telegram_id,
+            {
+                "segment": None,
+                "pain": None,
+                "intent": None,
+                "urgency": None,
+                "application_context": None,
+                "lead_status": "qual_started",
+                "lead_temperature": "warm",
+                "updated_at": self.now(),
+                "last_interaction_at": self.now(),
+            },
+        )
+        return await self._required_lead(telegram_id)
+
+    async def mark_bundle_delivered(
+        self,
+        telegram_id: int,
+        *,
+        track: str,
+        requested_keys: list[str],
+        delivered_keys: list[str],
+        statuses: dict[str, str],
+    ) -> Lead:
+        await self._update_lead_fields(
+            telegram_id,
+            {
+                "materials_sent": 1 if delivered_keys else 0,
+                "lead_status": "route_completed",
+                "lead_temperature": "warm",
+                "updated_at": self.now(),
+                "last_interaction_at": self.now(),
+            },
+        )
+        await self.add_event(
+            telegram_id,
+            "bundle_delivered",
+            {
+                "track": track,
+                "requested_keys": requested_keys,
+                "delivered_keys": delivered_keys,
+                "statuses": statuses,
+            },
+        )
+        return await self._required_lead(telegram_id)
 
     async def mark_qual_completed(self, telegram_id: int) -> Lead:
         await self._update_lead_fields(
@@ -633,19 +744,86 @@ class VcStorage:
         return await self._refresh_temperature(telegram_id)
 
     async def mark_sales_notified(self, telegram_id: int) -> Lead:
+        lead = await self._required_lead(telegram_id)
+        status = (
+            lead.lead_status
+            if lead.intent == "sales_consultation"
+            else "sales_notified"
+        )
         await self._update_lead_fields(
             telegram_id,
             {
                 "sales_notified": 1,
                 "sales_notified_at": self.now(),
-                "lead_status": "sales_notified",
+                "lead_status": status,
                 "updated_at": self.now(),
                 "last_interaction_at": self.now(),
             },
         )
-        await self.add_event(telegram_id, "sales_notification_sent")
         await self.add_event(telegram_id, "sales_notified")
         return await self._required_lead(telegram_id)
+
+    async def mark_application_submitted(self, telegram_id: int) -> Lead:
+        await self._update_lead_fields(
+            telegram_id,
+            {
+                "intent": "sales_consultation",
+                "lead_status": "application_submitted",
+                "call_requested": 1,
+                "lead_temperature": "sql",
+                "updated_at": self.now(),
+                "last_interaction_at": self.now(),
+            },
+        )
+        await self.add_event(telegram_id, "application_submitted")
+        return await self._required_lead(telegram_id)
+
+    async def mark_support_requested(self, telegram_id: int) -> Lead:
+        await self._update_lead_fields(
+            telegram_id,
+            {
+                "intent": "setup_help",
+                "lead_status": "support_requested",
+                "updated_at": self.now(),
+                "last_interaction_at": self.now(),
+            },
+        )
+        await self.add_event(telegram_id, "support_requested")
+        return await self._required_lead(telegram_id)
+
+    async def mark_support_notified(self, telegram_id: int) -> Lead:
+        await self._update_lead_fields(
+            telegram_id,
+            {
+                "support_notified": 1,
+                "support_notified_at": self.now(),
+                "updated_at": self.now(),
+                "last_interaction_at": self.now(),
+            },
+        )
+        await self.add_event(telegram_id, "support_notified")
+        return await self._required_lead(telegram_id)
+
+    async def delivery_details(
+        self,
+        telegram_id: int,
+    ) -> tuple[list[str], bool]:
+        events = await self.list_events(telegram_id)
+        delivered: list[str] = []
+        playbook_opened = False
+        for event in events:
+            if event.event_type == "bundle_delivered":
+                for key in event.event_payload.get("delivered_keys", []):
+                    material_key = str(key)
+                    if material_key not in delivered:
+                        delivered.append(material_key)
+            elif (
+                event.event_type == "full_playbook_requested"
+                and event.event_payload.get("delivery_status")
+                == "delivered"
+            ):
+                playbook_opened = True
+        return delivered, playbook_opened
 
     async def remember_bot_screen(self, telegram_id: int, message_id: int) -> Lead:
         lead = await self._required_lead(telegram_id)
@@ -870,6 +1048,7 @@ class VcStorage:
             segment=row["segment"],
             pain=row["pain"],
             intent=row["intent"],
+            urgency=row["urgency"],
             application_context=row["application_context"],
             lead_status=row["lead_status"],
             lead_temperature=row["lead_temperature"],
@@ -878,6 +1057,8 @@ class VcStorage:
             call_requested=bool(row["call_requested"]),
             sales_notified=bool(row["sales_notified"]),
             sales_notified_at=row["sales_notified_at"],
+            support_notified=bool(row["support_notified"]),
+            support_notified_at=row["support_notified_at"],
             last_bot_screen_message_id=row["last_bot_screen_message_id"],
             bot_screen_message_ids=json.loads(row["bot_screen_message_ids"] or "[]"),
             created_at=row["created_at"],

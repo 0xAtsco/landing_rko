@@ -4,17 +4,17 @@
 
 ## 1. Назначение и границы
 
-`VC Funnel Bot` — отдельный Telegram-бот для воронки постов Андрея:
+`VC Funnel Bot` — отдельный Telegram-бот для маршрута Hermes:
 
 ```text
-пост Андрея -> индивидуальный deep link -> обещанный материал -> канал «ИИ-связки»
-                                                     -> персональный маршрут -> контекст -> Игорь
+YouTube / Telegram / direct -> два вопроса -> материалы
+-> персональный план -> контекст -> менеджер команды
 ```
 
 Бот решает четыре задачи:
 
-1. Сохраняет отдельную атрибуцию каждого поста по deep link.
-2. Сразу выдаёт обещанный материал, запускает персональный маршрут или просит контекст заявки.
+1. Сохраняет источник как YouTube, Telegram или direct.
+2. После двух ответов выдаёт релевантный bundle и полную инструкцию по кнопке.
 3. Хранит карточку лида и журнал событий.
 4. Передаёт заявку продажникам только после явного запроса и текстового контекста от пользователя.
 
@@ -26,7 +26,7 @@
 
 ```mermaid
 flowchart LR
-    Content["Пост Андрея / legacy-источники"] --> Link["Индивидуальный deep link"]
+    Content["YouTube / Telegram"] --> Link["Одна ссылка на источник"]
     Direct["Прямой /start или текстовая команда"] --> Telegram
     Link --> Telegram["Telegram Bot API"]
     Telegram --> Main["main.py: polling"]
@@ -36,7 +36,7 @@ flowchart LR
     Router --> Storage["storage.py"]
     Router --> Materials["materials.py"]
     Router --> Hermes["hermes.py: bundles"]
-    Hermes --> HermesSpec["bot_flow_spec.json v1"]
+    Hermes --> HermesSpec["bot_flow_spec.json v2"]
     Hermes --> Materials
     Materials --> MaterialCatalog["catalog/materials.py"]
     Materials --> Storage
@@ -44,7 +44,7 @@ flowchart LR
     Router --> Renderer["rendering.py"]
     Renderer --> Telegram
     Router --> Notifier["notifier.py"]
-    Notifier --> Sales["Игорь + sales/admin получатели"]
+    Notifier --> Sales["Менеджеры команды"]
     Notifier --> Storage
     Storage --> SQLite[("SQLite / WAL")]
 ```
@@ -161,7 +161,7 @@ material_key = равен payload
 - `доступ` и `стать ближе` -> доступ в канал;
 - `материалы` -> материал;
 - `разбор` и `созвон` -> запрос контекста заявки;
-- другой текст -> экран с вариантами «Как работает связка», «Перейти в канал», «Хочу собрать свою связку».
+- другой текст внутри незавершённого legacy-сценария -> старый безопасный экран.
 
 До маршрутизации свободного текста бот проверяет его на признаки паспортных, банковских и платёжных данных. Подозрительный текст не сохраняется как контекст заявки.
 
@@ -169,7 +169,8 @@ material_key = равен payload
 
 | `entry_mode` | Откуда приходит пользователь | Первый экран | Возможное продолжение |
 |---|---|---|---|
-| `universal_start` | пустой `/start`, `/menu` | три конкретных следующих шага | видео, канал или персональный маршрут |
+| `hermes_bottleneck` | `youtube_hermes`, `telegram_hermes`, пустой `/start`, `/menu` | первый вопрос Hermes | второй вопрос, bundle и один целевой переход |
+| `universal_start` | внутренний legacy fallback | старый безопасный экран | legacy-сценарии |
 | `external_materials` | `am_p01`–`p03` и legacy | обещанный материал | канал или персональный маршрут |
 | `direct_materials` | текст «материалы» | основное видео | канал или персональный маршрут |
 | `external_diagnostic` | `am_p04_route` и legacy | вопрос 1 из 2 | вопрос 2, результат и запрос контекста |
@@ -209,46 +210,43 @@ material_key = равен payload
 
 После второго ответа `analytics.py` формирует короткий персональный результат, а бот просит одним сообщением описать исходную ситуацию, проблему и желаемый результат. До этого сообщения notifier не вызывается. Контекстная legacy-диагностика из приватного канала остаётся сокращённой до одного вопроса.
 
-### 7.1. Hermes Bottleneck Router
+### 7.1. Основной маршрут Hermes
 
-Точный вход: `am_hermes_video_route`. Parser устанавливает:
-
-```text
-source=andrey_main
-entry_mode=hermes_bottleneck
-campaign=hermes_video
-cta_type=bottleneck_route
-cjm=hermes_bottleneck
-post_topic=hermes_install_and_demo
-```
+Публичные входы: `youtube_hermes` и `telegram_hermes`. Обычный `/start`
+открывает тот же маршрут с `source=direct`. `am_hermes_video_route` и
+остальные старые payload продолжают работать, но скрыты из `/links`.
 
 `bot/catalog/hermes.py` загружает
-`material_packs/hermes_first_audit/bot_flow_spec.json` версии 1. Поэтому
-callbacks, варианты ответов и порядок bundle не дублируются в обработчиках.
+`material_packs/hermes_first_audit/bot_flow_spec.json` версии 2. Первый
+ответ сохраняется в `pain`, второй — в `segment`. Поле `intent` остаётся
+свободным до явного запроса персонального плана или помощи с запуском.
 
-Первый ответ сохраняется в `pain`, второй — в `segment`, выбранный result
-track — в `intent`. После второго ответа `bot/hermes.py` последовательно
-разрешает material keys через SQLite/catalog, продолжает выдачу при
-`missing`, `inactive` или ошибке одного элемента и пишет delivery status на
-каждый ключ.
+После второго ответа `bot/hermes.py` последовательно выдаёт bundle и
+продолжает работу, если один из файлов отсутствует. Полная инструкция
+`hermes_full_playbook` не входит в bundle и отправляется только по отдельной
+кнопке.
 
 ```mermaid
 flowchart TD
-    Start["am_hermes_video_route"] --> Q1["Где застряли?"]
+    Start["YouTube / Telegram / direct"] --> Q1["Где застряли?"]
     Q1 --> Business["find / offer / build / deal"]
     Q1 --> Setup["setup"]
     Business --> Q2A["Что уже есть?"]
     Setup --> Q2B["Windows / macOS / model / other"]
-    Q2A --> Result["Result + persistent bundle"]
-    Q2B --> Result
-    Result --> Channel["Канал: без заявки"]
-    Result --> Apply["Apply / setup_support"]
-    Apply --> Context["Текст или setup-скриншот"]
-    Context --> Team["Одна карточка команде"]
+    Q2A --> Result["Вывод + постоянный bundle"]
+    Q2B --> SetupResult["Видео или честный fallback"]
+    Result --> Playbook["Полная инструкция по кнопке"]
+    Result --> Plan["Одна CTA: персональный план"]
+    Plan --> Urgency["Срок"]
+    Urgency --> Context["Контекст из трёх пунктов"]
+    Context --> Contact["Контакт, только если нет username"]
+    Contact --> Sales["Коммерческая карточка"]
+    SetupResult --> Help["Помощь с запуском"]
+    Help --> Support["Отдельная карточка помощи"]
 ```
 
 Три setup-видео могут добавляться позднее без деплоя. При их отсутствии
-setup-ветка остаётся доступной и показывает честный support-фолбэк.
+setup-ветка остаётся доступной и показывает честный fallback.
 
 ## 8. Модель состояния лида
 
@@ -280,10 +278,16 @@ materials_requested
 materials_sent
 qual_started
 qual_completed
+route_completed
 private_channel_sent
 call_cta_shown
 contact_requested
 review_context_requested
+application_started
+application_context_requested
+application_submitted
+setup_context_requested
+support_requested
 call_requested
 sales_notified
 not_ready
@@ -298,9 +302,9 @@ not_ready
 
 После `call_requested` или `sales_notified` источник блокируется: повторный `/start` обновляет только `latest_start_payload`, но не затирает исходную атрибуцию. Новые сообщения дописываются в `application_context` без повторного уведомления продажникам.
 
-Для `intent=setup_support` контекст или скриншот передаётся тем же
-получателям, но `call_requested` не устанавливается. Дедуп и attribution
-lock включаются через `sales_notified`.
+Для `intent=setup_help` контекст или скриншот передаётся тем же
+получателям отдельной карточкой. Дедуп работает через
+`support_notified`; событие `sales_notified` не используется.
 
 ## 9. Материалы
 
@@ -342,21 +346,21 @@ sequenceDiagram
     participant B as Telegram-бот
     participant DB as SQLite
     participant S as Продажники
-    U->>B: Начинает маршрут или открывает apply-ссылку
-    B->>DB: status = review_context_requested
-    B-->>U: Просит описать ситуацию
+    U->>B: Нажимает «Получить персональный план»
+    B->>DB: status = application_started
+    B-->>U: Просит срок и контекст
     U->>B: Отправляет текстовый контекст
-    B->>DB: Сохраняет application_context и call_requested
+    B->>DB: status = application_submitted
     B->>S: Отправляет карточку лида каждому получателю
     B->>DB: sales_notified, если доставлено хотя бы одному
-    B-->>U: Сообщает, что контекст передан Игорю
+    B-->>U: Сообщает, что заявка передана команде
 ```
 
-Карточка для продажника содержит источник, payload, post topic, кампанию,
-CTA, Telegram ID, имя, контакт, статус, температуру, Hermes bottleneck,
-current asset / OS, intent и контекст заявки. Setup-support получает
-отдельный заголовок и то же изображение, которое пользователь отправил
-после явного клика.
+Карточка для менеджера содержит только практические поля: источник, узкое
+звено, текущую ситуацию, срок, выданные материалы, факт открытия полной
+инструкции, контекст, имя, username, Telegram ID, контакт и время создания.
+Внутренние payload, CJM и message IDs не выводятся. Помощь с запуском
+получает отдельную карточку и не считается коммерческой заявкой.
 
 В production заявки отправляются трём получателям:
 
@@ -515,18 +519,22 @@ python -m bot.material_importer --apply --upload-chat-id <chat_id>
 | `application_context_submitted` | безопасный контекст сохранён |
 | `sales_notified` | уведомление доставлено хотя бы одному sales-получателю |
 
-Hermes-события:
+События основного маршрута:
 
 | Event | Когда создаётся |
 |---|---|
-| `hermes_route_started` | показан первый Hermes-вопрос |
-| `hermes_bottleneck_selected` | сохранён `pain` |
-| `hermes_context_selected` | сохранён `segment` и result track |
-| `hermes_bundle_started` | начата последовательная выдача bundle |
-| `hermes_material_delivered` | итог одного key: delivered/missing/inactive/failed |
-| `hermes_route_completed` | показаны result, bundle и CTA |
-| `hermes_channel_clicked` | пользователь запросил invite URL |
-| `hermes_apply_clicked` | пользователь явно запросил разбор или setup-support |
+| `route_started` | показан первый вопрос |
+| `bottleneck_selected` | сохранено узкое звено |
+| `situation_selected` | сохранена текущая ситуация |
+| `bundle_delivered` | завершена выдача bundle |
+| `full_playbook_requested` | пользователь запросил полную инструкцию |
+| `application_started` | нажата CTA персонального плана |
+| `urgency_selected` | выбран желаемый срок |
+| `application_submitted` | сохранён контекст и готова заявка |
+| `sales_notified` | коммерческая карточка доставлена |
+| `support_requested` | сохранён запрос помощи |
+| `support_notified` | карточка помощи доставлена |
+| `channel_clicked` | пользователь запросил ссылку канала |
 
 После материала invite URL открывается прямой URL-кнопкой ради перехода в одно нажатие. Telegram не сообщает боту о клике по такой кнопке и фактическом вступлении, поэтому бот не пишет событие `channel_joined` и не считает пользователя вступившим.
 
@@ -548,12 +556,11 @@ Env:       /opt/landing_rko/current/vc_funnel_bot/.env
 
 Перед публикацией первых трёх постов нужно загрузить содержимое материалов `am_p01_video`, `am_p02_map` и `am_p03_demo`. Invite URL канала уже настроен.
 
-Hermes-итерация развернута в production 24 июля 2026 года на commit
-`c6062b0`. Перед деплоем созданы backup кода и SQLite, на сервере пройдены
-63 теста, восемь готовых файлов загружены через manifest importer, а
-`vc-funnel-bot.service` перезапущен и работает в long polling. Фактическая
-readiness: `8/11`; три setup-видео остаются отдельным контентным
-обязательством и до загрузки используют support-фолбэк.
+Текущая Hermes-итерация использует две публичные ссылки, один основной
+двухвопросный маршрут, отдельные sales/support-карточки и полную инструкцию
+`hermes_full_playbook`. После её загрузки ожидаемая readiness — `9/12`;
+три setup-видео остаются отдельным контентным обязательством и до загрузки
+используют честный fallback.
 
 Операционные команды на сервере:
 

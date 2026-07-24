@@ -7,6 +7,7 @@ hermes_audit_prompt,Hermes_Audit_Prompt.txt,document,Копируемый про
 hermes_audit_workbook,Hermes_Audit_Workbook.xlsx,document,Лиды + аудит + сводка + созвон
 hermes_outreach_templates,Hermes_Outreach_Templates.md,document,Шаблоны первого контакта
 hermes_presentation_script,Hermes_Result_Presentation_Script.md,document,Сценарий презентации результата
+hermes_full_playbook,Hermes_First_Audit_Playbook.pdf,document,Полная инструкция по всей связке
 hermes_setup_windows_video,[ADD_URL_OR_FILE],video,Видео установки Windows
 hermes_setup_macos_video,[ADD_URL_OR_FILE],video,Видео установки macOS
 hermes_model_connection_video,[ADD_URL_OR_FILE],video,Видео подключения модели / подписки

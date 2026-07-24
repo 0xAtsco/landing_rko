@@ -32,7 +32,8 @@ class SourceParserTest(unittest.TestCase):
 
     def test_unknown_payload_falls_back_to_universal_start(self) -> None:
         source = parse_start_payload("unknown_campaign_payload")
-        self.assertEqual(source.source_type, "unknown")
+        self.assertEqual(source.source_type, "direct")
+        self.assertEqual(source.source, "direct")
         self.assertEqual(source.entry_mode, "universal_start")
 
     def test_youtube_description(self) -> None:

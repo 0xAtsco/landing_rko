@@ -18,13 +18,18 @@ from bot.catalog.hermes import (
 )
 from bot.config import Settings
 from bot.handlers import (
+    admin_links_text,
     admin_preview_text,
+    finalize_sales_application,
+    handle_sales_application_context,
     handle_review_context,
     handle_support_media,
     hermes_readiness_text,
+    lead_card_text,
     route_callback,
     route_entry,
 )
+from bot.notifier import build_sales_message, build_support_message
 from bot.source_parser import parse_start_payload
 from bot.storage import VcStorage
 
@@ -121,11 +126,20 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
         await self.storage.close()
         self.tmp.cleanup()
 
-    async def create_lead(self, payload: str = HERMES_PAYLOAD):
+    async def create_lead(
+        self,
+        payload: str = HERMES_PAYLOAD,
+        *,
+        username: str | None = None,
+    ):
         self.next_user_id += 1
         return await self.storage.upsert_lead(
             telegram_id=self.next_user_id,
-            username=f"user_{self.next_user_id}",
+            username=(
+                f"user_{self.next_user_id}"
+                if username is None
+                else username or None
+            ),
             first_name="Тест",
             source=parse_start_payload(payload),
         )
@@ -222,7 +236,7 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             await self.storage.count_events(
-                lead.telegram_id, "hermes_route_started"
+                lead.telegram_id, "route_started"
             ),
             1,
         )
@@ -299,7 +313,7 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
                 "hb:stage:setup",
                 "hb:setup:windows",
                 "setup_windows",
-                "Видео для этого этапа пока не загружено.",
+                "Видео по этому этапу ещё готовится.",
             ),
         )
         for stage, context, track, expected_result in cases:
@@ -314,18 +328,25 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
                     for screen in renderer.screens
                     if screen.get("persistent")
                 ]
-                self.assertIn(expected_result, result_screens[-1]["text"])
-                self.assertEqual(fresh.intent, track)
+                self.assertTrue(
+                    any(
+                        expected_result in str(screen["text"])
+                        for screen in result_screens
+                    )
+                )
+                self.assertIsNone(fresh.intent)
                 self.assertEqual(
                     await self.storage.count_events(
-                        lead.telegram_id, "hermes_route_completed"
+                        lead.telegram_id, "bundle_delivered"
                     ),
                     1,
                 )
-                self.assertEqual(
-                    button_data(renderer.screens[-1]),
-                    ["hb:channel", "hb:apply"],
+                expected_button = (
+                    ["hb:setup_help"]
+                    if track.startswith("setup_")
+                    else ["hb:plan"]
                 )
+                self.assertEqual(button_data(renderer.screens[-1]), expected_button)
 
     async def test_bundle_order_partial_missing_and_persistent_files(self) -> None:
         await self.load_materials(
@@ -355,15 +376,20 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
         deliveries = [
             event.event_payload
             for event in events
-            if event.event_type == "hermes_material_delivered"
+            if event.event_type == "bundle_delivered"
         ]
+        self.assertEqual(len(deliveries), 1)
         self.assertEqual(
-            [item["material_key"] for item in deliveries],
+            deliveries[0]["requested_keys"],
             list(HERMES_BUNDLES["build"]),
         )
         self.assertEqual(
-            [item["delivery_status"] for item in deliveries],
-            ["delivered", "missing", "delivered"],
+            deliveries[0]["statuses"],
+            {
+                "hermes_audit_kit": "delivered",
+                "hermes_audit_prompt": "missing",
+                "hermes_audit_workbook": "delivered",
+            },
         )
 
     async def test_channel_click_and_apply_semantics(self) -> None:
@@ -389,7 +415,7 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(channel_lead.private_channel_sent)
         self.assertEqual(
             await self.storage.count_events(
-                lead.telegram_id, "hermes_channel_clicked"
+                lead.telegram_id, "channel_clicked"
             ),
             1,
         )
@@ -399,13 +425,13 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
             self.storage,
             self.settings,
             channel_lead,
-            "hb:apply",
+            "hb:plan",
             None,
         )
         apply_lead = await self.storage.get_lead(lead.telegram_id)
-        self.assertEqual(apply_lead.intent, "apply")
+        self.assertEqual(apply_lead.intent, "sales_consultation")
         self.assertEqual(
-            apply_lead.lead_status, "review_context_requested"
+            apply_lead.lead_status, "application_started"
         )
         self.assertEqual(
             await self.storage.count_events(
@@ -413,7 +439,10 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
             ),
             0,
         )
-        self.assertIn("Опишите в 3 пунктах", renderer.screens[-1]["text"])
+        self.assertIn(
+            "Когда хотите получить первый рабочий результат?",
+            renderer.screens[-1]["text"],
+        )
 
     async def test_apply_notifies_once_only_after_text_context(self) -> None:
         settings = make_settings(sales_chat_id=5001)
@@ -442,7 +471,16 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
             self.storage,
             settings,
             lead,
-            "hb:apply",
+            "hb:plan",
+            None,
+        )
+        lead = await self.storage.get_lead(lead.telegram_id)
+        await route_callback(
+            renderer,
+            self.storage,
+            settings,
+            lead,
+            "hb:urgency:7d",
             None,
         )
         lead = await self.storage.get_lead(lead.telegram_id)
@@ -454,7 +492,7 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
         )
 
         bot = FakeBot()
-        await handle_review_context(  # type: ignore[arg-type]
+        await handle_sales_application_context(  # type: ignore[arg-type]
             renderer,
             bot,
             self.storage,
@@ -464,13 +502,14 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(len(bot.sent_messages), 1)
         fresh = await self.storage.get_lead(lead.telegram_id)
-        await handle_review_context(  # type: ignore[arg-type]
-            renderer,
-            bot,
-            self.storage,
-            settings,
-            fresh,
-            "Дополнение.",
+        combined = "\n\n".join(
+            part
+            for part in (fresh.application_context, "Дополнение.")
+            if part
+        )
+        await self.storage.save_application_context(
+            fresh.telegram_id,
+            combined,
         )
         self.assertEqual(len(bot.sent_messages), 1)
         self.assertEqual(
@@ -507,11 +546,11 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
             self.storage,
             settings,
             lead,
-            "hb:apply",
+            "hb:setup_help",
             None,
         )
         lead = await self.storage.get_lead(lead.telegram_id)
-        self.assertEqual(lead.intent, "setup_support")
+        self.assertEqual(lead.intent, "setup_help")
 
         message = SimpleNamespace(
             photo=[SimpleNamespace(file_id="photo-1")],
@@ -529,10 +568,11 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
         )
         fresh = await self.storage.get_lead(lead.telegram_id)
         self.assertFalse(fresh.call_requested)
-        self.assertTrue(fresh.sales_notified)
+        self.assertFalse(fresh.sales_notified)
+        self.assertTrue(fresh.support_notified)
         self.assertEqual(len(bot.sent_messages), 1)
         self.assertIn(
-            "обращение в поддержку Hermes",
+            "ЗАПРОС НА ПОМОЩЬ С HERMES",
             bot.sent_messages[0]["text"],
         )
         self.assertEqual(len(bot.sent_photos), 1)
@@ -564,7 +604,7 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Где вы сейчас застряли?", renderer.screens[-1]["text"])
         self.assertEqual(
             await self.storage.count_events(
-                lead.telegram_id, "unknown_hermes_callback"
+                lead.telegram_id, "unknown_callback"
             ),
             1,
         )
@@ -664,16 +704,179 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
 
         lead = await self.create_lead()
         await self.storage.add_event(
-            lead.telegram_id, "hermes_route_started"
+            lead.telegram_id, "route_started"
         )
         await self.storage.add_event(
-            lead.telegram_id, "hermes_route_started"
+            lead.telegram_id, "route_started"
         )
         stats = await self.storage.stats()
         self.assertIn(
-            ("hermes_route_started", 1),
+            ("route_started", 1),
             stats["hermes_funnel"],
         )
+
+    async def test_two_public_sources_and_direct_are_normalized(self) -> None:
+        youtube = parse_start_payload("youtube_hermes")
+        telegram = parse_start_payload("telegram_hermes")
+        direct = parse_start_payload(None)
+        self.assertEqual(youtube.source, "youtube")
+        self.assertEqual(telegram.source, "telegram")
+        self.assertEqual(direct.source, "direct")
+        self.assertEqual(youtube.entry_mode, "hermes_bottleneck")
+        self.assertEqual(telegram.entry_mode, "hermes_bottleneck")
+
+    async def test_playbook_is_optional_and_delivered_on_click(self) -> None:
+        await self.load_materials(
+            "hermes_find_business_guide",
+            "hermes_audit_workbook",
+            "hermes_full_playbook",
+        )
+        lead = await self.create_lead()
+        renderer = FakeRenderer()
+        lead = await self.complete(
+            lead,
+            "hb:stage:find",
+            "hb:asset:warm",
+            renderer,
+        )
+        self.assertEqual(
+            [
+                item["material"].material_key
+                for item in renderer.materials
+            ],
+            [
+                "hermes_find_business_guide",
+                "hermes_audit_workbook",
+            ],
+        )
+        self.assertEqual(button_data(renderer.screens[-1]), ["hb:plan"])
+        self.assertTrue(
+            any(
+                button_data(screen) == ["hb:playbook"]
+                for screen in renderer.screens
+            )
+        )
+
+        await route_callback(
+            renderer,
+            self.storage,
+            self.settings,
+            lead,
+            "hb:playbook",
+            None,
+        )
+        self.assertEqual(
+            renderer.materials[-1]["material"].material_key,
+            "hermes_full_playbook",
+        )
+        self.assertEqual(
+            await self.storage.count_events(
+                lead.telegram_id,
+                "full_playbook_requested",
+            ),
+            1,
+        )
+
+    async def test_missing_username_requires_contact_before_notification(self) -> None:
+        settings = make_settings(sales_chat_id=5001)
+        lead = await self.create_lead(username="")
+        renderer = FakeRenderer()
+        lead = await self.complete(
+            lead,
+            "hb:stage:offer",
+            "hb:asset:rko",
+            renderer,
+        )
+        await route_callback(
+            renderer,
+            self.storage,
+            settings,
+            lead,
+            "hb:plan",
+            None,
+        )
+        lead = await self.storage.get_lead(lead.telegram_id)
+        await route_callback(
+            renderer,
+            self.storage,
+            settings,
+            lead,
+            "hb:urgency:30d",
+            None,
+        )
+        lead = await self.storage.get_lead(lead.telegram_id)
+        bot = FakeBot()
+        await handle_sales_application_context(  # type: ignore[arg-type]
+            renderer,
+            bot,
+            self.storage,
+            settings,
+            lead,
+            "Хочу запустить аудит. Есть база. Мешает отсутствие первого сценария.",
+        )
+        pending = await self.storage.get_lead(lead.telegram_id)
+        self.assertEqual(pending.lead_status, "contact_requested")
+        self.assertEqual(bot.sent_messages, [])
+        self.assertEqual(
+            await self.storage.count_events(
+                lead.telegram_id,
+                "application_submitted",
+            ),
+            0,
+        )
+
+        pending = await self.storage.save_contact(
+            lead.telegram_id,
+            "@contact",
+        )
+        await finalize_sales_application(  # type: ignore[arg-type]
+            renderer,
+            bot,
+            self.storage,
+            settings,
+            pending,
+        )
+        submitted = await self.storage.get_lead(lead.telegram_id)
+        self.assertEqual(submitted.lead_status, "application_submitted")
+        self.assertTrue(submitted.sales_notified)
+        self.assertEqual(len(bot.sent_messages), 1)
+
+    async def test_manager_cards_do_not_expose_internal_attribution(self) -> None:
+        lead = await self.create_lead("youtube_hermes")
+        lead = await self.storage.save_route_field(
+            lead.telegram_id,
+            "pain",
+            "deal",
+        )
+        lead = await self.storage.save_route_field(
+            lead.telegram_id,
+            "segment",
+            "rko_base",
+        )
+        lead = await self.storage.save_route_field(
+            lead.telegram_id,
+            "urgency",
+            "7d",
+        )
+        lead = await self.storage.save_application_context(
+            lead.telegram_id,
+            "Нужен первый рабочий сценарий.",
+        )
+        for card in (
+            build_sales_message(
+                lead,
+                delivered_materials=["hermes_result_to_deal"],
+            ),
+            build_support_message(lead),
+            lead_card_text(
+                lead,
+                delivered_materials=["hermes_result_to_deal"],
+            ),
+        ):
+            self.assertNotIn("Payload", card)
+            self.assertNotIn("Entry mode", card)
+            self.assertNotIn("CJM", card)
+            self.assertNotIn("content_id", card)
 
 
 if __name__ == "__main__":

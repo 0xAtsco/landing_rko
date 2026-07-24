@@ -19,12 +19,15 @@ from .catalog.hermes import (
     HERMES_GENERAL_CONTEXT_BY_CALLBACK,
     HERMES_MATERIAL_KEYS,
     HERMES_PAYLOAD,
+    HERMES_PUBLIC_PAYLOADS,
     HERMES_QUESTION_1,
     HERMES_QUESTION_2_GENERAL,
     HERMES_QUESTION_2_SETUP,
     HERMES_SETUP_CONTEXT_BY_CALLBACK,
     HERMES_STAGE_BY_CALLBACK,
     HERMES_START_MESSAGE,
+    HERMES_URGENCY_BY_CALLBACK,
+    HERMES_URGENCY_QUESTION,
     hermes_track,
 )
 from .config import Settings
@@ -44,14 +47,19 @@ from .keyboards import (
     channel_material_actions_keyboard,
     channel_result_actions_keyboard,
     direct_start_keyboard,
+    contact_request_keyboard,
+    hermes_business_cta_keyboard,
+    hermes_playbook_keyboard,
     hermes_q1_keyboard,
     hermes_q2_general_keyboard,
     hermes_q2_setup_keyboard,
-    hermes_result_actions_keyboard,
+    hermes_setup_help_keyboard,
+    hermes_urgency_keyboard,
     materials_actions_keyboard,
     q1_keyboard,
     q2_keyboard,
     result_actions_keyboard,
+    submitted_channel_keyboard,
     unsafe_continue_keyboard,
     unknown_text_keyboard,
     vc_interest_keyboard,
@@ -66,7 +74,16 @@ from .messages import (
     DIRECT_REVIEW_TEXT,
     ENTER_CHANNEL_REPLY,
     FINAL_SAVED_APPLICATION_TEXT,
+    HERMES_APPLICATION_INTRO_TEXT,
+    HERMES_COMMERCIAL_TRANSITION_TEXT,
+    HERMES_CONTACT_PROMPT,
+    HERMES_CONTEXT_TOO_SHORT_TEXT,
     HERMES_CHANNEL_REPLY,
+    HERMES_PLAYBOOK_MISSING_TEXT,
+    HERMES_PLAYBOOK_TEXT,
+    HERMES_SETUP_CONTEXT_PROMPT,
+    HERMES_SUPPORT_PENDING_TEXT,
+    HERMES_SETUP_RECEIVED_TEXT,
     MATERIAL_MISSING_TEXT,
     PRIVATE_CHANNEL_MISSING_TEXT,
     Q2_TEXT,
@@ -94,9 +111,18 @@ from .materials import (
     material_body,
     material_readiness,
     resolve_material,
+    resolve_material_key,
 )
 from .models import Lead
-from .notifier import SupportAttachment, notify_sales
+from .notifier import (
+    BOTTLENECK_LABELS,
+    SITUATION_LABELS,
+    URGENCY_LABELS,
+    SupportAttachment,
+    material_labels,
+    notify_sales,
+    notify_support,
+)
 from .rendering import BotScreenRenderer
 from .safety import contains_unsafe_data, mask_sensitive as mask_sensitive_text
 from .source_parser import parse_start_payload, parse_text_trigger
@@ -168,27 +194,47 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
     async def start(message: Message, command: CommandObject, bot: Bot) -> None:
         if message.from_user is None:
             return
-
+        raw_payload = (command.args or "").strip() or None
+        parsed_source = parse_start_payload(raw_payload)
+        if raw_payload and parsed_source.source_type == "unknown":
+            parsed_source = parse_start_payload(None)
         lead = await storage.upsert_lead(
             telegram_id=message.from_user.id,
             username=message.from_user.username,
             first_name=message.from_user.first_name,
-            source=parse_start_payload((command.args or "").strip() or None),
+            source=parsed_source,
         )
         renderer = BotScreenRenderer(bot, storage, settings)
+        if (
+            raw_payload is None
+            or normalize_payload(raw_payload) not in PAYLOAD_CATALOG
+        ):
+            await show_hermes_start(
+                renderer,
+                storage,
+                lead,
+                None,
+            )
+            return
         await route_entry(renderer, storage, settings, lead)
 
     @router.message(Command("reset_vc"))
     async def reset_vc(message: Message) -> None:
-        if message.from_user is None:
+        if not await require_admin(message, settings):
             return
+        assert message.from_user is not None
         reset_done = await storage.reset_lead_for_test(message.from_user.id)
         await message.answer(RESET_DONE_TEXT if reset_done else RESET_EMPTY_TEXT)
 
     @router.message(Command("menu"))
     async def menu(message: Message, bot: Bot) -> None:
         lead = await ensure_lead_from_message(message, storage, parse_start_payload(None))
-        await show_universal_start(BotScreenRenderer(bot, storage, settings), storage, lead, None)
+        await show_hermes_start(
+            BotScreenRenderer(bot, storage, settings),
+            storage,
+            lead,
+            None,
+        )
 
     @router.message(Command("materials"))
     async def materials_command(message: Message, bot: Bot) -> None:
@@ -218,8 +264,18 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
         await start_review_request(BotScreenRenderer(bot, storage, settings), storage, lead, REVIEW_CTA_REPLY, None)
 
     @router.message(Command("help"))
-    async def help_command(message: Message) -> None:
-        await message.answer(HELP_TEXT, reply_markup=direct_start_keyboard())
+    async def help_command(message: Message, bot: Bot) -> None:
+        lead = await ensure_lead_from_message(
+            message,
+            storage,
+            parse_start_payload(None),
+        )
+        await show_hermes_start(
+            BotScreenRenderer(bot, storage, settings),
+            storage,
+            lead,
+            None,
+        )
 
     @router.message(Command("admin"))
     async def admin(message: Message) -> None:
@@ -351,7 +407,17 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             await message.answer("Lead не найден.")
             return
         await storage.add_event(message.from_user.id, "admin_lead_opened", {"telegram_id": telegram_id})  # type: ignore[union-attr]
-        await message.answer(lead_card_text(lead), reply_markup=admin_lead_keyboard(lead.telegram_id))
+        delivered, playbook_opened = await storage.delivery_details(
+            lead.telegram_id
+        )
+        await message.answer(
+            lead_card_text(
+                lead,
+                delivered_materials=delivered,
+                playbook_opened=playbook_opened,
+            ),
+            reply_markup=admin_lead_keyboard(lead.telegram_id),
+        )
 
     @router.message(Command("events"))
     async def events_command(message: Message, command: CommandObject) -> None:
@@ -425,7 +491,7 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             await handle_material_wizard_media(message, material_wizards)
             return
         lead = await storage.get_lead(message.from_user.id)
-        if lead is None or lead.intent != "setup_support":
+        if lead is None or lead.intent != "setup_help":
             return
         await handle_support_media(
             BotScreenRenderer(bot, storage, settings),
@@ -455,7 +521,7 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             await route_callback(renderer, storage, settings, lead, callback.data, source_message)
 
     @router.message(F.contact)
-    async def contact_shared(message: Message) -> None:
+    async def contact_shared(message: Message, bot: Bot) -> None:
         if message.from_user is None or message.contact is None:
             return
         lead = await storage.get_lead(message.from_user.id)
@@ -470,7 +536,19 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
         if not contact:
             await message.answer(REVIEW_CTA_REPLY)
             return
-        await storage.save_contact(lead.telegram_id, contact[:120])
+        lead = await storage.save_contact(lead.telegram_id, contact[:120])
+        if (
+            lead.lead_status == "contact_requested"
+            and lead.application_context
+        ):
+            await finalize_sales_application(
+                BotScreenRenderer(bot, storage, settings),
+                bot,
+                storage,
+                settings,
+                lead,
+            )
+            return
         await message.answer("Контакт сохранил.")
 
     @router.message(F.text)
@@ -494,18 +572,57 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             )
         renderer = BotScreenRenderer(bot, storage, settings)
 
+        if lead.lead_status == "contact_requested":
+            if contains_unsafe_data(text):
+                await show_unsafe_warning(renderer, storage, lead)
+                return
+            lead = await storage.save_contact(lead.telegram_id, text[:120])
+            await finalize_sales_application(
+                renderer,
+                bot,
+                storage,
+                settings,
+                lead,
+            )
+            return
+
         if contains_unsafe_data(text):
             await show_unsafe_warning(renderer, storage, lead)
+            return
+
+        if lead.lead_status == "application_context_requested":
+            await handle_sales_application_context(
+                renderer,
+                bot,
+                storage,
+                settings,
+                lead,
+                text,
+            )
+            return
+
+        if lead.lead_status == "setup_context_requested":
+            await handle_setup_context(
+                renderer,
+                bot,
+                storage,
+                settings,
+                lead,
+                text,
+            )
             return
 
         if lead.lead_status == "review_context_requested":
             await handle_review_context(renderer, bot, storage, settings, lead, text)
             return
 
-        if is_terminal_lead(lead):
+        if lead.lead_status in {
+            "application_submitted",
+            "support_requested",
+            "sales_notified",
+        } or is_terminal_lead(lead):
             combined = "\n\n".join(part for part in (lead.application_context, text[:1200]) if part)
             lead = await storage.save_application_context(lead.telegram_id, combined[-2400:])
-            await storage.add_event(lead.telegram_id, "application_context_appended_after_sales")
             await renderer.render_screen(lead=lead, text=FINAL_SAVED_APPLICATION_TEXT, mode="send_new")
             return
 
@@ -652,13 +769,23 @@ async def route_entry(
         )
         return
 
-    if is_terminal_lead(lead):
-        await show_returning_after_sales(renderer, lead, settings, source_message)
+    if (
+        entry_source.raw_start_payload is None
+        or (
+            entry_source.source_type == "direct"
+            and entry_source.raw_start_payload is not None
+        )
+    ):
+        await show_hermes_start(
+            renderer,
+            storage,
+            lead,
+            source_message,
+        )
         return
 
-    if lead.source_type == "unknown" and lead.raw_start_payload:
-        await storage.add_event(lead.telegram_id, "unknown_payload_routed", {"payload": lead.raw_start_payload})
-        await show_universal_start(renderer, storage, lead, source_message)
+    if is_terminal_lead(lead):
+        await show_returning_after_sales(renderer, lead, settings, source_message)
         return
 
     if lead.entry_mode == "universal_start":
@@ -724,23 +851,18 @@ async def show_hermes_start(
     if is_terminal_lead(lead):
         await storage.add_event(
             lead.telegram_id,
-            "hermes_route_started",
+            "route_started",
             {
-                "payload": payload,
-                "post_topic": lead.post_topic,
+                "source": public_source(lead),
                 "returning_terminal_lead": True,
             },
         )
     else:
-        lead = await storage.set_status(
+        lead = await storage.start_main_route(lead.telegram_id)
+        await storage.add_event(
             lead.telegram_id,
-            "qual_started",
-            "hermes_route_started",
-            {
-                "payload": payload,
-                "post_topic": lead.post_topic,
-            },
-            temperature="warm",
+            "route_started",
+            {"source": public_source(lead), "payload": payload},
         )
     await renderer.render_screen(
         lead=lead,
@@ -760,11 +882,15 @@ async def route_hermes_callback(
 ) -> None:
     pain = HERMES_STAGE_BY_CALLBACK.get(data)
     if pain is not None:
-        lead = await storage.save_answer(lead.telegram_id, "pain", pain)
+        lead = await storage.save_route_field(
+            lead.telegram_id,
+            "pain",
+            pain,
+        )
         await storage.add_event(
             lead.telegram_id,
-            "hermes_bottleneck_selected",
-            {"pain": pain},
+            "bottleneck_selected",
+            {"bottleneck": pain},
         )
         is_setup = pain == "setup"
         await renderer.render_screen(
@@ -790,15 +916,18 @@ async def route_hermes_callback(
         segment = HERMES_GENERAL_CONTEXT_BY_CALLBACK.get(data)
 
     if segment is not None and lead.pain is not None:
-        lead = await storage.save_answer(lead.telegram_id, "segment", segment)
+        lead = await storage.save_route_field(
+            lead.telegram_id,
+            "segment",
+            segment,
+        )
         track = hermes_track(lead.pain, segment)
-        lead = await storage.save_answer(lead.telegram_id, "intent", track)
         await storage.add_event(
             lead.telegram_id,
-            "hermes_context_selected",
+            "situation_selected",
             {
-                "pain": lead.pain,
-                "segment": segment,
+                "bottleneck": lead.pain,
+                "situation": segment,
                 "track": track,
             },
         )
@@ -812,10 +941,67 @@ async def route_hermes_callback(
         )
         return
 
+    if data == "hb:playbook":
+        material = await resolve_material_key(
+            storage,
+            settings,
+            "hermes_full_playbook",
+        )
+        if not material.has_content or material.status in {
+            "missing",
+            "inactive",
+        }:
+            await storage.add_event(
+                lead.telegram_id,
+                "full_playbook_requested",
+                {"delivery_status": material.status},
+            )
+            await renderer.render_screen(
+                lead=lead,
+                text=HERMES_PLAYBOOK_MISSING_TEXT,
+                source_message=source_message,
+                mode="send_new",
+            )
+            return
+        try:
+            await renderer.render_material(
+                lead=lead,
+                material=material,
+                text=material_text(
+                    material.title,
+                    material_body(material),
+                ),
+                source_message=source_message,
+                persistent=True,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Hermes playbook delivery failed: %s",
+                exc.__class__.__name__,
+            )
+            await storage.add_event(
+                lead.telegram_id,
+                "full_playbook_requested",
+                {"delivery_status": "failed"},
+            )
+            await renderer.render_screen(
+                lead=lead,
+                text=HERMES_PLAYBOOK_MISSING_TEXT,
+                source_message=source_message,
+                mode="send_new",
+            )
+            return
+        await storage.add_event(
+            lead.telegram_id,
+            "full_playbook_requested",
+            {"delivery_status": "delivered"},
+        )
+        return
+
     if data == "hb:channel":
         await storage.add_event(
             lead.telegram_id,
-            "hermes_channel_clicked",
+            "channel_clicked",
             {"invite_configured": bool(settings.private_channel_invite_url)},
         )
         await renderer.render_screen(
@@ -828,37 +1014,82 @@ async def route_hermes_callback(
         )
         return
 
-    if data == "hb:apply":
-        intent = "setup_support" if lead.pain == "setup" else "apply"
-        lead = await storage.save_answer(lead.telegram_id, "intent", intent)
+    if (
+        data in {"hb:plan", "hb:apply"}
+        and lead.pain in {"find_business", "offer", "build", "deal"}
+        and lead.segment in set(HERMES_GENERAL_CONTEXT_BY_CALLBACK.values())
+    ):
+        lead = await storage.set_route_state(
+            lead.telegram_id,
+            "application_started",
+            intent="sales_consultation",
+        )
         await storage.add_event(
             lead.telegram_id,
-            "hermes_apply_clicked",
+            "application_started",
             {
-                "intent": intent,
-                "pain": lead.pain,
-                "segment": lead.segment,
+                "bottleneck": lead.pain,
+                "situation": lead.segment,
             },
         )
-        if is_terminal_lead(lead):
-            await renderer.render_screen(
-                lead=lead,
-                text=HERMES_APPLY_PROMPT,
-                source_message=source_message,
-            )
-        else:
-            await start_review_request(
-                renderer,
-                storage,
-                lead,
-                HERMES_APPLY_PROMPT,
-                source_message,
-            )
+        await renderer.render_screen(
+            lead=lead,
+            text=(
+                f"{HERMES_APPLICATION_INTRO_TEXT}\n\n"
+                f"{HERMES_URGENCY_QUESTION}"
+            ),
+            reply_markup=hermes_urgency_keyboard(),
+            source_message=source_message,
+        )
+        return
+
+    urgency = HERMES_URGENCY_BY_CALLBACK.get(data)
+    if (
+        urgency is not None
+        and lead.intent == "sales_consultation"
+        and lead.lead_status == "application_started"
+    ):
+        lead = await storage.save_route_field(
+            lead.telegram_id,
+            "urgency",
+            urgency,
+        )
+        await storage.add_event(
+            lead.telegram_id,
+            "urgency_selected",
+            {"urgency": urgency},
+        )
+        lead = await storage.set_route_state(
+            lead.telegram_id,
+            "application_context_requested",
+        )
+        await renderer.render_screen(
+            lead=lead,
+            text=HERMES_APPLY_PROMPT,
+            source_message=source_message,
+        )
+        return
+
+    if (
+        data in {"hb:setup_help", "hb:apply"}
+        and lead.pain == "setup"
+        and lead.segment in set(HERMES_SETUP_CONTEXT_BY_CALLBACK.values())
+    ):
+        lead = await storage.set_route_state(
+            lead.telegram_id,
+            "setup_context_requested",
+            intent="setup_help",
+        )
+        await renderer.render_screen(
+            lead=lead,
+            text=HERMES_SETUP_CONTEXT_PROMPT,
+            source_message=source_message,
+        )
         return
 
     await storage.add_event(
         lead.telegram_id,
-        "unknown_hermes_callback",
+        "unknown_callback",
         {"data": data},
     )
     await renderer.render_screen(
@@ -893,21 +1124,53 @@ async def complete_hermes_route(
         track,
     )
     lead = await storage.get_lead(lead.telegram_id) or lead
-    if not is_terminal_lead(lead):
-        lead = await storage.mark_qual_completed(lead.telegram_id)
-    await storage.add_event(
-        lead.telegram_id,
-        "hermes_route_completed",
-        {
-            "track": track,
-            "materials_requested": delivery.requested,
-            "materials_delivered": delivery.delivered,
-        },
+    requested_keys = list(HERMES_BUNDLES.get(track, ()))
+    delivered_keys = [
+        key
+        for key, status in delivery.statuses.items()
+        if status == "delivered"
+    ]
+    if is_terminal_lead(lead):
+        await storage.add_event(
+            lead.telegram_id,
+            "bundle_delivered",
+            {
+                "track": track,
+                "requested_keys": requested_keys,
+                "delivered_keys": delivered_keys,
+                "statuses": delivery.statuses,
+            },
+        )
+    else:
+        lead = await storage.mark_bundle_delivered(
+            lead.telegram_id,
+            track=track,
+            requested_keys=requested_keys,
+            delivered_keys=delivered_keys,
+            statuses=delivery.statuses,
+        )
+    if track.startswith("setup_"):
+        await renderer.render_screen(
+            lead=lead,
+            text=(
+                "Если проблема осталась, команда поможет определить шаг, "
+                "на котором возникла ошибка."
+            ),
+            reply_markup=hermes_setup_help_keyboard(),
+            mode="send_new",
+        )
+        return
+    await renderer.render_screen(
+        lead=lead,
+        text=HERMES_PLAYBOOK_TEXT,
+        reply_markup=hermes_playbook_keyboard(),
+        mode="send_new",
+        persistent=True,
     )
     await renderer.render_screen(
         lead=lead,
-        text="Выберите следующий шаг.",
-        reply_markup=hermes_result_actions_keyboard(),
+        text=HERMES_COMMERCIAL_TRANSITION_TEXT,
+        reply_markup=hermes_business_cta_keyboard(),
         mode="send_new",
     )
 
@@ -925,7 +1188,18 @@ async def ensure_lead_from_callback(callback: CallbackQuery, storage: VcStorage)
 
 
 def is_terminal_lead(lead: Lead) -> bool:
-    return lead.call_requested or lead.sales_notified or lead.lead_status in {"call_requested", "sales_notified"}
+    return (
+        lead.call_requested
+        or lead.sales_notified
+        or lead.support_notified
+        or lead.lead_status
+        in {
+            "call_requested",
+            "sales_notified",
+            "application_submitted",
+            "support_requested",
+        }
+    )
 
 
 def select_materials_url(settings: Settings, lead: Lead) -> str | None:
@@ -1221,6 +1495,109 @@ async def start_review_request(
     await renderer.render_screen(lead=fresh, text=text, source_message=source_message)
 
 
+async def handle_sales_application_context(
+    renderer: BotScreenRenderer,
+    bot: Bot,
+    storage: VcStorage,
+    settings: Settings,
+    lead: Lead,
+    text: str,
+) -> None:
+    if len(text.strip()) < 20:
+        await renderer.render_screen(
+            lead=lead,
+            text=HERMES_CONTEXT_TOO_SHORT_TEXT,
+            mode="send_new",
+        )
+        return
+    lead = await storage.save_application_context(
+        lead.telegram_id,
+        text[:1200],
+    )
+    if not lead.username and not lead.contact:
+        lead = await storage.set_route_state(
+            lead.telegram_id,
+            "contact_requested",
+            intent="sales_consultation",
+        )
+        await renderer.render_screen(
+            lead=lead,
+            text=HERMES_CONTACT_PROMPT,
+            reply_markup=contact_request_keyboard(),
+            mode="send_new",
+        )
+        return
+    await finalize_sales_application(
+        renderer,
+        bot,
+        storage,
+        settings,
+        lead,
+    )
+
+
+async def finalize_sales_application(
+    renderer: BotScreenRenderer,
+    bot: Bot,
+    storage: VcStorage,
+    settings: Settings,
+    lead: Lead,
+) -> None:
+    if lead.lead_status != "application_submitted":
+        lead = await storage.mark_application_submitted(lead.telegram_id)
+    sent = await notify_sales(
+        bot=bot,
+        storage=storage,
+        sales_chat_id=settings.sales_chat_id,
+        sales_chat_ids=settings.sales_chat_ids,
+        lead=lead,
+    )
+    fresh = await storage.get_lead(lead.telegram_id) or lead
+    await renderer.render_screen(
+        lead=fresh,
+        text=CONTEXT_RECEIVED_TEXT if sent else SALES_DELIVERY_PENDING_TEXT,
+        reply_markup=submitted_channel_keyboard(
+            settings.private_channel_invite_url
+        ),
+        mode="send_new",
+    )
+
+
+async def handle_setup_context(
+    renderer: BotScreenRenderer,
+    bot: Bot,
+    storage: VcStorage,
+    settings: Settings,
+    lead: Lead,
+    text: str,
+    *,
+    attachment: SupportAttachment | None = None,
+) -> None:
+    lead = await storage.save_application_context(
+        lead.telegram_id,
+        text[:1200],
+    )
+    lead = await storage.mark_support_requested(lead.telegram_id)
+    sent = await notify_support(
+        bot=bot,
+        storage=storage,
+        sales_chat_id=settings.sales_chat_id,
+        sales_chat_ids=settings.sales_chat_ids,
+        lead=lead,
+        attachment=attachment,
+    )
+    fresh = await storage.get_lead(lead.telegram_id) or lead
+    await renderer.render_screen(
+        lead=fresh,
+        text=(
+            HERMES_SETUP_RECEIVED_TEXT
+            if sent
+            else HERMES_SUPPORT_PENDING_TEXT
+        ),
+        mode="send_new",
+    )
+
+
 async def show_unsafe_warning(renderer: BotScreenRenderer, storage: VcStorage, lead: Lead) -> None:
     await storage.add_event(lead.telegram_id, "unsafe_data_warning_shown")
     await renderer.render_screen(
@@ -1313,7 +1690,7 @@ async def handle_support_media(
         return
 
     context = caption[:1200] or "Скриншот ошибки приложен."
-    if is_terminal_lead(lead):
+    if lead.lead_status == "support_requested":
         combined = "\n\n".join(
             part
             for part in (
@@ -1326,11 +1703,6 @@ async def handle_support_media(
             lead.telegram_id,
             combined[-2400:],
         )
-        await storage.add_event(
-            lead.telegram_id,
-            "application_context_appended_after_sales",
-            {"media": True},
-        )
         await renderer.render_screen(
             lead=lead,
             text=FINAL_SAVED_APPLICATION_TEXT,
@@ -1338,36 +1710,16 @@ async def handle_support_media(
         )
         return
 
-    if lead.lead_status != "review_context_requested":
+    if lead.lead_status != "setup_context_requested":
         return
-
-    lead = await storage.save_application_context(lead.telegram_id, context)
-    await storage.add_event(
-        lead.telegram_id,
-        "application_context_submitted",
-        {
-            "length": len(context),
-            "media": True,
-            "file_type": attachment.telegram_file_type,
-        },
-    )
-    sent = await notify_sales(
-        bot=bot,
-        storage=storage,
-        sales_chat_id=settings.sales_chat_id,
-        sales_chat_ids=settings.sales_chat_ids,
-        lead=lead,
+    await handle_setup_context(
+        renderer,
+        bot,
+        storage,
+        settings,
+        lead,
+        context,
         attachment=attachment,
-    )
-    fresh = await storage.get_lead(lead.telegram_id) or lead
-    await renderer.render_screen(
-        lead=fresh,
-        text=(
-            SUPPORT_CONTEXT_RECEIVED_TEXT
-            if sent
-            else SALES_DELIVERY_PENDING_TEXT
-        ),
-        mode="send_new",
     )
 
 
@@ -1417,13 +1769,10 @@ async def render_material_or_screen(
 def admin_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Deep links", callback_data="admin:links")],
-            [InlineKeyboardButton(text="Материалы", callback_data="admin:materials")],
-            [InlineKeyboardButton(text="Hermes readiness", callback_data="admin:hermes_readiness")],
-            [InlineKeyboardButton(text="Пользователи", callback_data="admin:leads")],
+            [InlineKeyboardButton(text="Лиды", callback_data="admin:leads")],
             [InlineKeyboardButton(text="Статистика", callback_data="admin:stats")],
-            [InlineKeyboardButton(text="Preview payload", callback_data="admin:preview")],
-            [InlineKeyboardButton(text="Export CSV", callback_data="admin:export")],
+            [InlineKeyboardButton(text="Материалы", callback_data="admin:materials")],
+            [InlineKeyboardButton(text="Ссылки", callback_data="admin:links")],
         ]
     )
 
@@ -1432,9 +1781,8 @@ def admin_materials_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Добавить материал", callback_data="admin:material_add_hint")],
-            [InlineKeyboardButton(text="Hermes readiness", callback_data="admin:hermes_readiness")],
-            [InlineKeyboardButton(text="Preview payload", callback_data="admin:preview")],
-            [InlineKeyboardButton(text="Deep links", callback_data="admin:links")],
+            [InlineKeyboardButton(text="Проверить готовность", callback_data="admin:hermes_readiness")],
+            [InlineKeyboardButton(text="Ссылки", callback_data="admin:links")],
         ]
     )
 
@@ -1446,11 +1794,19 @@ def admin_preview_keyboard(payload: str) -> InlineKeyboardMarkup | None:
 
 
 def admin_leads_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Export CSV", callback_data="admin:export")], [InlineKeyboardButton(text="Stats", callback_data="admin:stats")]])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Статистика", callback_data="admin:stats")]
+        ]
+    )
 
 
 def admin_lead_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Events", callback_data=f"admin:events:{telegram_id}")], [InlineKeyboardButton(text="Back to leads", callback_data="admin:leads")]])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Назад к лидам", callback_data="admin:leads")]
+        ]
+    )
 
 
 def rko_bridge_keyboard() -> InlineKeyboardMarkup:
@@ -1470,15 +1826,29 @@ def link_for(settings: Settings, payload: str) -> str:
     return f"https://t.me/{settings.bot_username.lstrip('@')}?start={payload}"
 
 
+def public_source(lead: Lead) -> str:
+    if lead.source == "youtube" or lead.source_type == "youtube":
+        return "YouTube"
+    if lead.source in {"telegram", "andrey_main", "channel"} or lead.source_type in {
+        "telegram",
+        "channel",
+    }:
+        return "Telegram"
+    return "direct"
+
+
 async def material_status(storage: VcStorage, settings: Settings, payload: str) -> str:
     material = await resolve_material(storage, settings, payload=payload)
     return material.status if material.has_content else "missing"
 
 
 async def admin_links_text(storage: VcStorage, settings: Settings) -> str:
-    lines = ["Deep links"]
-    if not settings.bot_username:
-        lines.append("\nVC_BOT_USERNAME не задан. Укажи username бота в .env, чтобы генерировать ссылки.")
+    lines = [
+        "Ссылки",
+        "",
+        f"YouTube: {link_for(settings, HERMES_PUBLIC_PAYLOADS['youtube'])}",
+        f"Telegram: {link_for(settings, HERMES_PUBLIC_PAYLOADS['telegram'])}",
+    ]
     readiness = await material_readiness(
         storage,
         settings,
@@ -1486,20 +1856,8 @@ async def admin_links_text(storage: VcStorage, settings: Settings) -> str:
     )
     loaded = sum(status == "loaded" for status in readiness.values())
     lines.append(
-        "\nHermes Bottleneck Router:"
-        f"\n- {HERMES_PAYLOAD}"
-        "\n  entry: hermes_bottleneck"
-        f"\n  materials: {loaded}/{len(HERMES_MATERIAL_KEYS)} loaded"
-        f"\n  link: {link_for(settings, HERMES_PAYLOAD)}"
+        f"\nМатериалы готовы: {loaded}/{len(HERMES_MATERIAL_KEYS)}"
     )
-    for group in ("andrey_main", "youtube", "telegram", "private_channel"):
-        lines.append(f"\n{group}:")
-        for payload, definition in PAYLOAD_CATALOG.items():
-            if definition.group != group or payload == HERMES_PAYLOAD:
-                continue
-            lines.append(
-                f"- {payload}\n  entry: {definition.entry_mode}\n  material: {definition.material_key or 'нет'} / {await material_status(storage, settings, payload)}\n  link: {link_for(settings, payload)}"
-            )
     return "\n".join(lines)
 
 
@@ -1597,18 +1955,29 @@ def first_screen_preview(source, material: ResolvedMaterial) -> tuple[str, str]:
 
 async def admin_materials_text(storage: VcStorage, settings: Settings) -> str:
     sqlite_materials = {material.material_key: material for material in await storage.list_materials()}
-    bindings = await storage.list_material_bindings()
     keys = sorted(set(MATERIAL_CATALOG) | set(sqlite_materials))
     lines = ["Материалы"]
     for index, key in enumerate(keys, start=1):
         material = sqlite_materials.get(key)
         fallback = MATERIAL_CATALOG.get(key)
-        payloads = [payload for payload, definition in PAYLOAD_CATALOG.items() if definition.material_key == key]
-        payloads += [payload for payload, bound_key in bindings.items() if bound_key == key and payload not in payloads]
-        status = "configured" if material and material.is_active else "env fallback" if fallback and (fallback.body or (fallback.env_url_name and _fallback_url(settings, fallback.env_url_name))) else "missing"
+        status = (
+            "загружен"
+            if material and material.is_active
+            else "встроен"
+            if fallback
+            and (
+                fallback.body
+                or (
+                    fallback.env_url_name
+                    and _fallback_url(settings, fallback.env_url_name)
+                )
+            )
+            else "отсутствует"
+        )
         lines.append(
-            f"\n{index}. {key}\nTitle: {(material.title if material else fallback.title if fallback else key)}\nStatus: {status}\nURL: {'yes' if (material and material.url) or (fallback and _fallback_url(settings, fallback.env_url_name)) else 'no'}\nFile: {'yes' if material and material.telegram_file_id else 'no'}\nPayloads:\n"
-            + "\n".join(f"- {payload}" for payload in payloads or ["нет"])
+            f"\n{index}. {(material.title if material else fallback.title if fallback else key)}"
+            f"\nКлюч: {key}"
+            f"\nСтатус: {status}"
         )
     return "\n".join(lines)
 
@@ -1658,11 +2027,22 @@ Active: {'yes' if material.is_active else 'no'}"""
 async def leads_text(storage: VcStorage) -> str:
     leads = await storage.list_recent_leads(limit=20)
     if not leads:
-        return "Последние пользователи\n\nПока пусто."
-    lines = ["Последние пользователи"]
+        return "Лиды\n\nПока пусто."
+    lines = ["Лиды"]
     for index, lead in enumerate(leads, start=1):
-        username = f"@{lead.username}" if lead.username else "username закрыт"
-        lines.append(f"\n{index}. {lead.telegram_id} {username} {lead.first_name or ''}\nstatus: {lead.lead_status} / {lead.lead_temperature}\npayload: {lead.latest_start_payload or lead.raw_start_payload or 'нет'}\nupdated: {lead.updated_at}")
+        username = f"@{lead.username}" if lead.username else "без username"
+        name = lead.first_name or "Без имени"
+        bottleneck = BOTTLENECK_LABELS.get(
+            lead.pain or "",
+            lead.pain or "не выбрано",
+        )
+        lines.append(
+            f"\n{index}. {lead.updated_at[:16]} — {name} / {username}"
+            f"\nИсточник: {public_source(lead)}"
+            f"\nУзкое звено: {bottleneck}"
+            f"\nСтатус: {lead.lead_status}"
+            f"\nКарточка: /lead {lead.telegram_id}"
+        )
     return "\n".join(lines)
 
 
@@ -1670,34 +2050,37 @@ def mask_sensitive(text: str | None) -> str:
     return mask_sensitive_text(text)
 
 
-def lead_card_text(lead: Lead) -> str:
-    return f"""Lead {lead.telegram_id}
+def lead_card_text(
+    lead: Lead,
+    *,
+    delivered_materials: list[str] | None = None,
+    playbook_opened: bool = False,
+) -> str:
+    username = f"@{lead.username}" if lead.username else "нет"
+    materials = ", ".join(
+        material_labels(delivered_materials or [])
+    ) or "нет"
+    return f"""Лид {lead.telegram_id}
 
-Username: {('@' + lead.username) if lead.username else 'нет'}
-First name: {lead.first_name or 'нет'}
+Имя: {lead.first_name or 'нет'}
+Username: {username}
+Контакт: {lead.contact or username}
+Источник: {public_source(lead)}
+Узкое звено: {BOTTLENECK_LABELS.get(lead.pain or '', lead.pain or 'не выбрано')}
+Ситуация: {SITUATION_LABELS.get(lead.segment or '', lead.segment or 'не выбрана')}
+Срок: {URGENCY_LABELS.get(lead.urgency or '', lead.urgency or 'не выбран')}
+Намерение: {lead.intent or 'не указано'}
+Статус: {lead.lead_status}
 
-Status: {lead.lead_status}
-Temperature: {lead.lead_temperature}
-
-Original payload: {lead.raw_start_payload or 'нет'}
-Latest payload: {lead.latest_start_payload or 'нет'}
-Entry mode: {lead.entry_mode}
-Source: {lead.source}
-Entry surface: {lead.entry_surface}
-Post id: {lead.post_id or 'нет'}
-Post slug: {lead.post_slug or 'нет'}
-CTA type: {lead.cta_type}
-
-Segment: {lead.segment or 'нет'}
-Pain: {lead.pain or 'нет'}
-VC interest: {lead.intent or 'нет'}
-
-Context:
+Контекст:
 {mask_sensitive(lead.application_context)}
 
-Created: {lead.created_at}
-Updated: {lead.updated_at}
-Sales notified: {lead.sales_notified_at or 'нет'}"""
+Материалы: {materials}
+Полная инструкция открыта: {'да' if playbook_opened else 'нет'}
+
+Создан: {lead.created_at}
+Обновлён: {lead.updated_at}
+Последнее действие: {lead.last_interaction_at}"""
 
 
 def events_text(events, telegram_id: int | None) -> str:
@@ -1713,25 +2096,17 @@ def events_text(events, telegram_id: int | None) -> str:
 
 
 def stats_text(stats: dict) -> str:
-    lines = [
-        "Stats",
-        "",
-        f"Total leads: {stats['total_leads']}",
-        f"Today leads: {stats['today_leads']}",
-        f"Call requested: {stats['call_requested']}",
-        f"Sales notified: {stats['sales_notified']}",
-        "",
-        "By status:",
-    ]
-    lines += [f"- {label}: {total}" for label, total in stats["by_status"]]
-    lines.append("\nBy payload:")
-    lines += [f"- {label}: {total}" for label, total in stats["by_payload"]]
-    lines.append("\nHermes conversion (unique users):")
-    lines += [
-        f"- {label}: {total}"
-        for label, total in stats.get("hermes_funnel", [])
-    ]
-    return "\n".join(lines)
+    return f"""Статистика
+
+Старты всего: {stats['starts_total']}
+Старты YouTube: {stats['starts_youtube']}
+Старты Telegram: {stats['starts_telegram']}
+Завершили 2 вопроса: {stats['questions_completed']}
+Получили набор материалов: {stats['bundle_delivered']}
+Открыли полную инструкцию: {stats['playbook_opened']}
+Начали заявку: {stats['applications_started']}
+Отправили заявку: {stats['applications_submitted']}
+Запросы помощи с Hermes: {stats['support_requests']}"""
 
 
 async def send_leads_csv(message: Message, storage: VcStorage) -> None:

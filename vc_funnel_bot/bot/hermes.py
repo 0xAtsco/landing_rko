@@ -54,14 +54,6 @@ async def send_material_bundle(
     track: str,
 ) -> BundleDelivery:
     material_keys = HERMES_BUNDLES.get(track, ())
-    await storage.add_event(
-        lead.telegram_id,
-        "hermes_bundle_started",
-        {
-            "track": track,
-            "material_keys": list(material_keys),
-        },
-    )
 
     statuses: dict[str, str] = {}
     delivered = 0
@@ -74,15 +66,6 @@ async def send_material_bundle(
                 else "missing"
             )
             statuses[material_key] = status
-            await storage.add_event(
-                lead.telegram_id,
-                "hermes_material_delivered",
-                {
-                    "track": track,
-                    "material_key": material_key,
-                    "delivery_status": status,
-                },
-            )
             continue
 
         try:
@@ -108,32 +91,10 @@ async def send_material_bundle(
                 exc.__class__.__name__,
             )
             statuses[material_key] = "failed"
-            await storage.add_event(
-                lead.telegram_id,
-                "hermes_material_delivered",
-                {
-                    "track": track,
-                    "material_key": material_key,
-                    "delivery_status": "failed",
-                    "error_type": exc.__class__.__name__,
-                },
-            )
             continue
 
         delivered += 1
         statuses[material_key] = "delivered"
-        await storage.add_event(
-            lead.telegram_id,
-            "hermes_material_delivered",
-            {
-                "track": track,
-                "material_key": material_key,
-                "delivery_status": "delivered",
-            },
-        )
-
-    if delivered and not (lead.call_requested or lead.sales_notified):
-        await storage.mark_materials_sent(lead.telegram_id)
 
     return BundleDelivery(
         track=track,

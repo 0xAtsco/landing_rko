@@ -1,9 +1,13 @@
 {
-  "version": 1,
+  "version": 2,
   "payload": "am_hermes_video_route",
+  "public_payloads": {
+    "youtube": "youtube_hermes",
+    "telegram": "telegram_hermes"
+  },
   "entry_mode": "hermes_bottleneck",
   "source": "andrey_main",
-  "start_message": "Вы посмотрели, как Hermes работает. Теперь за 60 секунд определим ваше узкое звено и дадим один готовый следующий шаг, который можно выполнить сегодня.",
+  "start_message": "Вы посмотрели, как работает Hermes. За два коротких шага определим, где у вас сейчас узкое место, и выдадим подходящие материалы.",
   "question_1": {
     "text": "Где вы сейчас застряли?",
     "options": [
@@ -24,12 +28,12 @@
       },
       {
         "callback": "hb:stage:deal",
-        "label": "💰 Решение есть, не понимаю, как продать",
+        "label": "💰 Решение есть, не понимаю, как довести до сделки",
         "pain": "deal"
       },
       {
         "callback": "hb:stage:setup",
-        "label": "⚙️ Hermes не запустился",
+        "label": "⚙️ Не получается запустить Hermes",
         "pain": "setup"
       }
     ]
@@ -64,23 +68,23 @@
     "options": [
       {
         "callback": "hb:setup:windows",
-        "label": "Windows: установка / запуск",
+        "label": "Windows: установка или запуск",
         "segment": "windows"
       },
       {
         "callback": "hb:setup:mac",
-        "label": "macOS: установка / запуск",
+        "label": "macOS: установка или запуск",
         "segment": "macos"
       },
       {
         "callback": "hb:setup:model",
-        "label": "Модель / подписка не подключается",
-        "segment": "model_connection"
+        "label": "Не подключается модель",
+        "segment": "model"
       },
       {
         "callback": "hb:setup:other",
         "label": "Другая ошибка",
-        "segment": "other_setup"
+        "segment": "other"
       }
     ]
   },
@@ -113,27 +117,51 @@
     ],
     "setup_other": []
   },
-  "post_result_buttons": [
-    {
-      "callback": "hb:channel",
-      "label": "📲 Смотреть примеры в канале"
-    },
-    {
-      "callback": "hb:apply",
-      "label": "🎯 Разобрать мою ситуацию"
-    }
-  ],
-  "apply_prompt": "Опишите в 3 пунктах: 1) кому хотите предложить решение; 2) где сейчас проблема; 3) что уже установлено или собрано. Не отправляйте паспортные, банковские или платёжные данные.",
+  "playbook_button": {
+    "callback": "hb:playbook",
+    "label": "📘 Полная инструкция по всей связке"
+  },
+  "business_cta": {
+    "callback": "hb:plan",
+    "label": "🎯 Получить персональный план запуска"
+  },
+  "setup_cta": {
+    "callback": "hb:setup_help",
+    "label": "Получить помощь с запуском Hermes"
+  },
+  "urgency": {
+    "text": "Когда хотите получить первый рабочий результат?",
+    "options": [
+      {
+        "callback": "hb:urgency:7d",
+        "label": "В течение 7 дней",
+        "value": "7d"
+      },
+      {
+        "callback": "hb:urgency:30d",
+        "label": "В течение месяца",
+        "value": "30d"
+      },
+      {
+        "callback": "hb:urgency:undefined",
+        "label": "Срок пока не определил",
+        "value": "undefined"
+      }
+    ]
+  },
+  "apply_prompt": "Напишите одним сообщением:\n\n1. Что хотите запустить или получить.\n2. Что у вас уже есть.\n3. Что сейчас мешает.\n\nНе отправляйте пароли, токены, паспортные, банковские или платёжные данные.",
   "events": [
-    "hermes_route_started",
-    "hermes_bottleneck_selected",
-    "hermes_context_selected",
-    "hermes_route_completed",
-    "hermes_bundle_started",
-    "hermes_material_delivered",
-    "hermes_channel_clicked",
-    "hermes_apply_clicked",
-    "application_context_submitted",
-    "sales_notified"
+    "route_started",
+    "bottleneck_selected",
+    "situation_selected",
+    "bundle_delivered",
+    "full_playbook_requested",
+    "application_started",
+    "urgency_selected",
+    "application_submitted",
+    "sales_notified",
+    "support_requested",
+    "support_notified",
+    "channel_clicked"
   ]
 }

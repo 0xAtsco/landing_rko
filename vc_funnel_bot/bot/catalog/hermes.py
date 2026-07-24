@@ -17,12 +17,17 @@ with SPEC_PATH.open(encoding="utf-8") as spec_file:
 
 HERMES_FLOW_VERSION = int(HERMES_FLOW_SPEC["version"])
 HERMES_PAYLOAD = str(HERMES_FLOW_SPEC["payload"])
+HERMES_PUBLIC_PAYLOADS = {
+    str(source): str(payload)
+    for source, payload in HERMES_FLOW_SPEC["public_payloads"].items()
+}
 HERMES_ENTRY_MODE = str(HERMES_FLOW_SPEC["entry_mode"])
 HERMES_START_MESSAGE = str(HERMES_FLOW_SPEC["start_message"])
 HERMES_QUESTION_1 = str(HERMES_FLOW_SPEC["question_1"]["text"])
 HERMES_QUESTION_2_GENERAL = str(HERMES_FLOW_SPEC["question_2_general"]["text"])
 HERMES_QUESTION_2_SETUP = str(HERMES_FLOW_SPEC["question_2_setup"]["text"])
 HERMES_APPLY_PROMPT = str(HERMES_FLOW_SPEC["apply_prompt"])
+HERMES_URGENCY_QUESTION = str(HERMES_FLOW_SPEC["urgency"]["text"])
 
 HERMES_STAGE_OPTIONS = tuple(HERMES_FLOW_SPEC["question_1"]["options"])
 HERMES_GENERAL_CONTEXT_OPTIONS = tuple(
@@ -31,6 +36,7 @@ HERMES_GENERAL_CONTEXT_OPTIONS = tuple(
 HERMES_SETUP_CONTEXT_OPTIONS = tuple(
     HERMES_FLOW_SPEC["question_2_setup"]["options"]
 )
+HERMES_URGENCY_OPTIONS = tuple(HERMES_FLOW_SPEC["urgency"]["options"])
 
 HERMES_STAGE_BY_CALLBACK = {
     option["callback"]: option["pain"] for option in HERMES_STAGE_OPTIONS
@@ -43,6 +49,10 @@ HERMES_SETUP_CONTEXT_BY_CALLBACK = {
     option["callback"]: option["segment"]
     for option in HERMES_SETUP_CONTEXT_OPTIONS
 }
+HERMES_URGENCY_BY_CALLBACK = {
+    option["callback"]: option["value"]
+    for option in HERMES_URGENCY_OPTIONS
+}
 
 HERMES_BUNDLES = {
     track: tuple(material_keys)
@@ -54,7 +64,7 @@ HERMES_MATERIAL_KEYS = tuple(
         for material_keys in HERMES_BUNDLES.values()
         for material_key in material_keys
     )
-)
+) + ("hermes_full_playbook",)
 
 HERMES_RESULT_TEXTS = {
     "find_business": (
@@ -84,9 +94,8 @@ HERMES_SETUP_READY_TEXT = (
     "и платёжных данных."
 )
 HERMES_SETUP_FALLBACK_TEXT = (
-    "Видео для этого этапа пока не загружено. Нажмите «Разобрать мою "
-    "ситуацию» и отправьте текст или скриншот ошибки — без токенов, паролей "
-    "и платёжных данных."
+    "Видео по этому этапу ещё готовится. Вы можете описать проблему, и "
+    "команда посмотрит, где возникла ошибка."
 )
 
 
@@ -96,6 +105,6 @@ def hermes_track(pain: str, segment: str) -> str:
     return {
         "windows": "setup_windows",
         "macos": "setup_macos",
-        "model_connection": "setup_model",
-        "other_setup": "setup_other",
+        "model": "setup_model",
+        "other": "setup_other",
     }.get(segment, "setup_other")

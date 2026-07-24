@@ -110,6 +110,7 @@ class Lead:
     segment: str | None
     pain: str | None
     intent: str | None
+    urgency: str | None
     application_context: str | None
     lead_status: str
     lead_temperature: str
@@ -118,6 +119,8 @@ class Lead:
     call_requested: bool
     sales_notified: bool
     sales_notified_at: str | None
+    support_notified: bool
+    support_notified_at: str | None
     last_bot_screen_message_id: int | None
     bot_screen_message_ids: list[int]
     created_at: str
@@ -155,10 +158,16 @@ LEAD_STATUSES = {
     "materials_sent",
     "qual_started",
     "qual_completed",
+    "route_completed",
     "private_channel_sent",
     "call_cta_shown",
     "contact_requested",
     "review_context_requested",
+    "application_started",
+    "application_context_requested",
+    "application_submitted",
+    "setup_context_requested",
+    "support_requested",
     "call_requested",
     "sales_notified",
     "not_ready",

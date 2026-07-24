@@ -70,18 +70,18 @@ class MaterialsAdminTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("fallback universal start", text) if "fallback universal start" in text else self.assertIn("Entry mode", text)
         self.assertIsNone(await self.storage.get_lead(123))
 
-    async def test_links_show_material_keys_for_all_andrey_payloads(self) -> None:
+    async def test_links_show_only_two_public_routes(self) -> None:
         text = await admin_links_text(self.storage, make_settings())
-        for payload in (
-            "am_p01_video",
-            "am_p02_map",
-            "am_p03_demo",
-            "am_p04_route",
-            "am_p05_apply",
-        ):
-            with self.subTest(payload=payload):
-                self.assertIn(payload, text)
-                self.assertIn(f"material: {payload}", text)
+        self.assertIn(
+            "YouTube: https://t.me/vc_test_bot?start=youtube_hermes",
+            text,
+        )
+        self.assertIn(
+            "Telegram: https://t.me/vc_test_bot?start=telegram_hermes",
+            text,
+        )
+        self.assertNotIn("am_p01_video", text)
+        self.assertNotIn("entry_mode", text)
 
     def test_admin_helper(self) -> None:
         settings = make_settings(admin_ids={123})

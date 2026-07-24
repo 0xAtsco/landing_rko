@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 
 from .analytics import PAIN_OPTIONS, SEGMENT_OPTIONS
 from .catalog.hermes import (
@@ -8,6 +13,7 @@ from .catalog.hermes import (
     HERMES_GENERAL_CONTEXT_OPTIONS,
     HERMES_SETUP_CONTEXT_OPTIONS,
     HERMES_STAGE_OPTIONS,
+    HERMES_URGENCY_OPTIONS,
 )
 
 VISIBLE_SEGMENT_CODES = ("rko", "audience", "product", "starting")
@@ -226,15 +232,83 @@ def hermes_q2_setup_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def hermes_result_actions_keyboard() -> InlineKeyboardMarkup:
+def hermes_playbook_keyboard() -> InlineKeyboardMarkup:
+    button = HERMES_FLOW_SPEC["playbook_button"]
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=button["label"],
-                    callback_data=button["callback"],
+                    text=button["label"], callback_data=button["callback"]
                 )
             ]
-            for button in HERMES_FLOW_SPEC["post_result_buttons"]
+        ]
+    )
+
+
+def hermes_business_cta_keyboard() -> InlineKeyboardMarkup:
+    button = HERMES_FLOW_SPEC["business_cta"]
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=button["label"], callback_data=button["callback"]
+                )
+            ]
+        ]
+    )
+
+
+def hermes_setup_help_keyboard() -> InlineKeyboardMarkup:
+    button = HERMES_FLOW_SPEC["setup_cta"]
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=button["label"], callback_data=button["callback"]
+                )
+            ]
+        ]
+    )
+
+
+def hermes_urgency_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=option["label"], callback_data=option["callback"]
+                )
+            ]
+            for option in HERMES_URGENCY_OPTIONS
+        ]
+    )
+
+
+def contact_request_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(
+                    text="Отправить номер телефона",
+                    request_contact=True,
+                )
+            ]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def submitted_channel_keyboard(url: str | None) -> InlineKeyboardMarkup | None:
+    if not url:
+        return None
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📲 Смотреть примеры в канале",
+                    callback_data="hb:channel",
+                )
+            ]
         ]
     )
