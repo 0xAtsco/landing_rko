@@ -1,6 +1,6 @@
 # Архитектура VC Funnel Bot
 
-Актуально на 24 июля 2026 года. Документ описывает существующую реализацию из каталога `vc_funnel_bot`, а не целевую архитектуру на будущее.
+Актуально на 27 июля 2026 года. Документ описывает существующую реализацию из каталога `vc_funnel_bot`.
 
 ## 1. Назначение и границы
 
@@ -8,7 +8,7 @@
 
 ```text
 YouTube / Telegram / direct -> два вопроса -> материалы
--> персональный план -> контекст -> менеджер команды
+-> план из трёх действий -> E02 / эфир / запись
 ```
 
 Бот решает четыре задачи:
@@ -16,11 +16,13 @@ YouTube / Telegram / direct -> два вопроса -> материалы
 1. Сохраняет источник как YouTube, Telegram или direct.
 2. После двух ответов выдаёт релевантный bundle и полную инструкцию по кнопке.
 3. Хранит карточку лида и журнал событий.
-4. Передаёт заявку продажникам только после явного запроса и текстового контекста от пользователя.
+4. Регистрирует на E02 одним нажатием и отправляет persisted-напоминания.
+5. Сохраняет прежнюю заявку продажникам за режимом `personal_plan`.
 
 Это самостоятельное приложение. Оно не использует старый `telegram_bot`, API лендинга, SWOP/RKO API, старую SQLite-базу или Google Sheets.
 
-В текущей версии нет LLM, распознавания голоса, фоновых follow-up, CRM и календаря.
+В текущей версии нет LLM, распознавания голоса, CRM и отдельной
+веб-регистрации. Календарь формируется как безопасная Google Calendar URL.
 
 ## 2. Общая схема
 
@@ -36,7 +38,7 @@ flowchart LR
     Router --> Storage["storage.py"]
     Router --> Materials["materials.py"]
     Router --> Hermes["hermes.py: bundles"]
-    Hermes --> HermesSpec["bot_flow_spec.json v2"]
+    Hermes --> HermesSpec["bot_flow_spec.json v4"]
     Hermes --> Materials
     Materials --> MaterialCatalog["catalog/materials.py"]
     Materials --> Storage
@@ -46,6 +48,9 @@ flowchart LR
     Router --> Notifier["notifier.py"]
     Notifier --> Sales["Менеджеры команды"]
     Notifier --> Storage
+    Main --> Reminders["reminders.py: один worker"]
+    Reminders --> Storage
+    Reminders --> Telegram
     Storage --> SQLite[("SQLite / WAL")]
 ```
 
@@ -67,7 +72,8 @@ flowchart LR
 3. При необходимости регистрирует публичные команды Telegram.
 4. Создаёт `Dispatcher`, подключает один роутер `vc_funnel`.
 5. Запускает long polling.
-6. При остановке закрывает HTTP-сессию Telegram и соединение с БД.
+6. В режиме webinar запускает один reminder worker в том же процессе.
+7. При остановке завершает worker, закрывает HTTP-сессию Telegram и БД.
 
 ## 4. Структура каталогов
 
@@ -217,7 +223,7 @@ material_key = равен payload
 остальные старые payload продолжают работать, но скрыты из `/links`.
 
 `bot/catalog/hermes.py` загружает
-`material_packs/hermes_first_audit/bot_flow_spec.json` версии 2. Первый
+`material_packs/hermes_first_audit/bot_flow_spec.json` версии 4. Первый
 ответ сохраняется в `pain`, второй — в `segment`. Поле `intent` остаётся
 свободным до явного запроса персонального плана или помощи с запуском.
 
@@ -236,17 +242,19 @@ flowchart TD
     Q2A --> Result["Вывод + постоянный bundle"]
     Q2B --> SetupResult["Видео или честный fallback"]
     Result --> Playbook["Полная инструкция по кнопке"]
-    Result --> Plan["Одна CTA: персональный план"]
-    Plan --> Urgency["Срок"]
-    Urgency --> Context["Контекст из трёх пунктов"]
-    Context --> Contact["Контакт, только если нет username"]
-    Contact --> Sales["Коммерческая карточка"]
+    Result --> Plan["Автоматический план: 3 действия"]
+    Plan --> Webinar["Registration / live / replay"]
+    Webinar --> Reminders["24h / 3h / 15m"]
     SetupResult --> Help["Помощь с запуском"]
     Help --> Support["Отдельная карточка помощи"]
 ```
 
 Три setup-видео могут добавляться позднее без деплоя. При их отсутствии
 setup-ветка остаётся доступной и показывает честный fallback.
+
+В `personal_plan` сохраняется прежняя ветка
+`CTA -> срок -> контекст -> контакт -> sales`. В `disabled` после
+автоматического плана финальный CTA не показывается.
 
 ## 8. Модель состояния лида
 
@@ -402,6 +410,13 @@ Append-only журнал действий: `telegram_id`, `event_type`, JSON pay
 ### `vc_funnel_payload_materials`
 
 Активная привязка одного payload к одному `material_key`, с необязательным `title_override`.
+
+### `vc_funnel_webinar_registrations`
+
+Одна регистрация на пару `(event_id, telegram_user_id)`. Хранит Telegram
+chat, snapshot source/start/campaign/post/route, статус регистрации,
+timestamps напоминаний и первые join/replay clicks. Таблица и индексы
+создаются аддитивно в существующей SQLite без очистки данных.
 
 ## 12. Рендеринг и конкурентность
 
@@ -611,10 +626,12 @@ pnpm build
 - Один процесс, один polling worker, одна локальная SQLite-база.
 - In-memory locks и мастер добавления материала не переносятся между процессами.
 - Нет автоматического retry для недоставленного sales notification.
-- Нет webhook, очереди задач, отдельного scheduler и горизонтального масштабирования.
-- Follow-up флаг существует, но сам follow-up scheduler не реализован.
+- Нет webhook, внешней очереди задач, отдельного scheduler-процесса и горизонтального масштабирования.
+- Общий follow-up флаг не реализует evergreen follow-ups; отдельный E02
+  reminder worker работает только по persisted-регистрациям.
 - Нет синхронизации с Google Sheets или CRM.
-- Нет календарного бронирования.
+- Нет календарного бронирования со слотами; есть готовая ссылка на событие
+  E02 в Google Calendar.
 - Нет LLM, voice и STT.
 - Аналитика доступна через SQLite, events, Telegram admin и CSV; отдельного dashboard нет.
 

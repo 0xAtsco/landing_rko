@@ -9,7 +9,9 @@ from aiogram.types import BotCommand
 
 from .config import load_settings, resolve_sqlite_path
 from .handlers import create_router
+from .reminders import run_webinar_reminder_worker
 from .storage import VcStorage
+from .webinar import webinar_is_configured
 
 
 async def main() -> None:
@@ -34,10 +36,28 @@ async def main() -> None:
         )
     dispatcher = Dispatcher()
     dispatcher.include_router(create_router(storage, settings))
+    reminder_stop = asyncio.Event()
+    reminder_task: asyncio.Task[None] | None = None
+    if (
+        settings.funnel_end_mode == "webinar"
+        and settings.webinar_enabled
+        and webinar_is_configured(settings)
+    ):
+        reminder_task = asyncio.create_task(
+            run_webinar_reminder_worker(
+                bot,
+                storage,
+                settings,
+                reminder_stop,
+            )
+        )
 
     try:
         await dispatcher.start_polling(bot)
     finally:
+        reminder_stop.set()
+        if reminder_task is not None:
+            await reminder_task
         await bot.session.close()
         await storage.close()
 

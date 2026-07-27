@@ -28,6 +28,7 @@ from .catalog.hermes import (
     HERMES_START_MESSAGE,
     HERMES_URGENCY_BY_CALLBACK,
     HERMES_URGENCY_QUESTION,
+    hermes_personal_plan_text,
     hermes_track,
 )
 from .config import Settings
@@ -55,6 +56,8 @@ from .keyboards import (
     hermes_q2_setup_keyboard,
     hermes_setup_help_keyboard,
     hermes_urgency_keyboard,
+    hermes_webinar_card_keyboard,
+    hermes_webinar_confirmation_keyboard,
     materials_actions_keyboard,
     q1_keyboard,
     q2_keyboard,
@@ -63,6 +66,7 @@ from .keyboards import (
     unsafe_continue_keyboard,
     unknown_text_keyboard,
     vc_interest_keyboard,
+    webinar_url_keyboard,
 )
 from .messages import (
     ACCESS_REPLY,
@@ -84,6 +88,18 @@ from .messages import (
     HERMES_SETUP_CONTEXT_PROMPT,
     HERMES_SUPPORT_PENDING_TEXT,
     HERMES_SETUP_RECEIVED_TEXT,
+    HERMES_WEBINAR_ALREADY_REGISTERED_TEXT,
+    HERMES_WEBINAR_CALENDAR_READY_TEXT,
+    HERMES_WEBINAR_CARD_TEXT,
+    HERMES_WEBINAR_JOIN_MISSING_TEXT,
+    HERMES_WEBINAR_JOIN_READY_TEXT,
+    HERMES_WEBINAR_LIVE_REGISTERED_TEXT,
+    HERMES_WEBINAR_LIVE_REGISTERED_NO_URL_TEXT,
+    HERMES_WEBINAR_LIVE_TEXT,
+    HERMES_WEBINAR_REGISTERED_TEXT,
+    HERMES_WEBINAR_REPLAY_PENDING_TEXT,
+    HERMES_WEBINAR_REPLAY_READY_TEXT,
+    HERMES_WEBINAR_REPLAY_TEXT,
     MATERIAL_MISSING_TEXT,
     PRIVATE_CHANNEL_MISSING_TEXT,
     Q2_TEXT,
@@ -127,6 +143,13 @@ from .rendering import BotScreenRenderer
 from .safety import contains_unsafe_data, mask_sensitive as mask_sensitive_text
 from .source_parser import parse_start_payload, parse_text_trigger
 from .storage import VcStorage
+from .webinar import (
+    google_calendar_url,
+    selected_route,
+    webinar_event_payload,
+    webinar_join_is_available,
+    webinar_phase,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -470,6 +493,10 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             await message.answer(await leads_text(storage), reply_markup=admin_leads_keyboard())
         elif action == "stats":
             await message.answer(stats_text(await storage.stats()))
+        elif action == "webinar":
+            await message.answer(
+                await webinar_admin_text(storage, settings)
+            )
         elif action == "preview":
             await message.answer("Напиши: /preview <payload>")
         elif action == "export":
@@ -941,6 +968,25 @@ async def route_hermes_callback(
         )
         return
 
+    if data == "hb:materials":
+        if lead.pain is None or lead.segment is None:
+            await show_hermes_start(
+                renderer,
+                storage,
+                lead,
+                source_message,
+            )
+            return
+        await complete_hermes_route(
+            renderer,
+            storage,
+            settings,
+            lead,
+            hermes_track(lead.pain, lead.segment),
+            source_message,
+        )
+        return
+
     if data == "hb:playbook":
         material = await resolve_material_key(
             storage,
@@ -962,6 +1008,16 @@ async def route_hermes_callback(
                 source_message=source_message,
                 mode="send_new",
             )
+            if webinar_phase(settings) not in {
+                "personal_plan",
+                "disabled",
+            }:
+                await render_webinar_card(
+                    renderer,
+                    storage,
+                    settings,
+                    lead,
+                )
             return
         try:
             await renderer.render_material(
@@ -990,12 +1046,29 @@ async def route_hermes_callback(
                 source_message=source_message,
                 mode="send_new",
             )
+            if webinar_phase(settings) not in {
+                "personal_plan",
+                "disabled",
+            }:
+                await render_webinar_card(
+                    renderer,
+                    storage,
+                    settings,
+                    lead,
+                )
             return
         await storage.add_event(
             lead.telegram_id,
             "full_playbook_requested",
             {"delivery_status": "delivered"},
         )
+        if webinar_phase(settings) not in {"personal_plan", "disabled"}:
+            await render_webinar_card(
+                renderer,
+                storage,
+                settings,
+                lead,
+            )
         return
 
     if data == "hb:channel":
@@ -1014,11 +1087,211 @@ async def route_hermes_callback(
         )
         return
 
+    if data == "hb:webinar:register":
+        phase = webinar_phase(settings)
+        payload = webinar_event_payload(settings, lead, phase=phase)
+        await storage.add_event(
+            lead.telegram_id,
+            "webinar_registration_clicked",
+            payload,
+        )
+        if (
+            phase not in {"registration", "live"}
+            or settings.webinar_event_id is None
+        ):
+            await render_webinar_card(
+                renderer,
+                storage,
+                settings,
+                lead,
+                source_message=source_message,
+            )
+            return
+        chat_id = (
+            source_message.chat.id
+            if source_message is not None
+            else lead.telegram_id
+        )
+        _, created = await storage.upsert_webinar_registration(
+            event_id=settings.webinar_event_id,
+            telegram_user_id=lead.telegram_id,
+            telegram_chat_id=chat_id,
+            username=lead.username,
+            first_name=lead.first_name,
+            source=lead.source,
+            start_payload=lead.raw_start_payload,
+            campaign=lead.campaign,
+            post=lead.post_id or lead.post_slug,
+            selected_route=selected_route(lead),
+            bottleneck=lead.pain,
+        )
+        await storage.add_event(
+            lead.telegram_id,
+            (
+                "webinar_registered"
+                if created
+                else "webinar_already_registered"
+            ),
+            payload,
+        )
+        text = (
+            HERMES_WEBINAR_ALREADY_REGISTERED_TEXT
+            if not created
+            else (
+                HERMES_WEBINAR_LIVE_REGISTERED_TEXT
+                if settings.webinar_join_url
+                else HERMES_WEBINAR_LIVE_REGISTERED_NO_URL_TEXT
+            )
+            if phase == "live"
+            else HERMES_WEBINAR_REGISTERED_TEXT
+        )
+        await renderer.render_screen(
+            lead=lead,
+            text=text,
+            reply_markup=hermes_webinar_confirmation_keyboard(
+                phase,
+                join_available=bool(settings.webinar_join_url),
+            ),
+            source_message=source_message,
+            mode="send_new",
+        )
+        return
+
+    if data == "hb:webinar:calendar":
+        phase = webinar_phase(settings)
+        await storage.add_event(
+            lead.telegram_id,
+            "webinar_calendar_clicked",
+            webinar_event_payload(settings, lead, phase=phase),
+        )
+        if phase not in {"registration", "live"}:
+            await render_webinar_card(
+                renderer,
+                storage,
+                settings,
+                lead,
+                source_message=source_message,
+            )
+            return
+        await renderer.render_screen(
+            lead=lead,
+            text=HERMES_WEBINAR_CALENDAR_READY_TEXT,
+            reply_markup=webinar_url_keyboard(
+                "Открыть Google Calendar",
+                google_calendar_url(settings),
+            ),
+            source_message=source_message,
+            mode="send_new",
+        )
+        return
+
+    if data == "hb:webinar:join":
+        phase = webinar_phase(settings)
+        registration = (
+            await storage.get_webinar_registration(
+                settings.webinar_event_id,
+                lead.telegram_id,
+            )
+            if settings.webinar_event_id is not None
+            else None
+        )
+        if registration is None:
+            await render_webinar_card(
+                renderer,
+                storage,
+                settings,
+                lead,
+                source_message=source_message,
+            )
+            return
+        join_available = webinar_join_is_available(settings)
+        if not join_available and phase != "live":
+            await render_webinar_card(
+                renderer,
+                storage,
+                settings,
+                lead,
+                source_message=source_message,
+            )
+            return
+        await storage.add_event(
+            lead.telegram_id,
+            "webinar_join_clicked",
+            webinar_event_payload(settings, lead, phase=phase),
+        )
+        if settings.webinar_event_id is not None:
+            await storage.mark_webinar_click(
+                settings.webinar_event_id,
+                lead.telegram_id,
+                "join",
+            )
+        if not settings.webinar_join_url:
+            await renderer.render_screen(
+                lead=lead,
+                text=HERMES_WEBINAR_JOIN_MISSING_TEXT,
+                source_message=source_message,
+                mode="send_new",
+            )
+            return
+        await renderer.render_screen(
+            lead=lead,
+            text=HERMES_WEBINAR_JOIN_READY_TEXT,
+            reply_markup=webinar_url_keyboard(
+                "Открыть эфир",
+                settings.webinar_join_url,
+            ),
+            source_message=source_message,
+            mode="send_new",
+        )
+        return
+
+    if data == "hb:webinar:replay":
+        phase = webinar_phase(settings)
+        await storage.add_event(
+            lead.telegram_id,
+            "webinar_replay_clicked",
+            webinar_event_payload(settings, lead, phase=phase),
+        )
+        if settings.webinar_event_id is not None:
+            await storage.mark_webinar_click(
+                settings.webinar_event_id,
+                lead.telegram_id,
+                "replay",
+            )
+        if phase != "replay" or not settings.webinar_replay_url:
+            await renderer.render_screen(
+                lead=lead,
+                text=HERMES_WEBINAR_REPLAY_PENDING_TEXT,
+                source_message=source_message,
+                mode="send_new",
+            )
+            return
+        await renderer.render_screen(
+            lead=lead,
+            text=HERMES_WEBINAR_REPLAY_READY_TEXT,
+            reply_markup=webinar_url_keyboard(
+                "Открыть запись",
+                settings.webinar_replay_url,
+            ),
+            source_message=source_message,
+            mode="send_new",
+        )
+        return
+
     if (
         data in {"hb:plan", "hb:apply"}
         and lead.pain in {"find_business", "offer", "build", "deal"}
         and lead.segment in set(HERMES_GENERAL_CONTEXT_BY_CALLBACK.values())
     ):
+        if webinar_phase(settings) != "personal_plan":
+            await render_funnel_end(
+                renderer,
+                storage,
+                settings,
+                lead,
+                source_message=source_message,
+            )
+            return
         lead = await storage.set_route_state(
             lead.telegram_id,
             "application_started",
@@ -1100,6 +1373,108 @@ async def route_hermes_callback(
     )
 
 
+async def render_automatic_plan(
+    renderer: BotScreenRenderer,
+    lead: Lead,
+    *,
+    source_message: Message | None = None,
+) -> None:
+    if lead.pain is None or lead.segment is None:
+        return
+    await renderer.render_screen(
+        lead=lead,
+        text=hermes_personal_plan_text(lead.pain, lead.segment),
+        source_message=source_message,
+        mode="send_new",
+        persistent=True,
+    )
+
+
+async def render_webinar_card(
+    renderer: BotScreenRenderer,
+    storage: VcStorage,
+    settings: Settings,
+    lead: Lead,
+    *,
+    source_message: Message | None = None,
+) -> None:
+    phase = webinar_phase(settings)
+    if phase in {"personal_plan", "disabled"}:
+        return
+    if phase == "registration":
+        text = HERMES_WEBINAR_CARD_TEXT
+    elif phase == "live":
+        live_text = (
+            HERMES_WEBINAR_LIVE_TEXT
+            if settings.webinar_join_url
+            else HERMES_WEBINAR_JOIN_MISSING_TEXT
+        )
+        text = f"{HERMES_WEBINAR_CARD_TEXT}\n\n{live_text}"
+    else:
+        text = (
+            HERMES_WEBINAR_REPLAY_TEXT
+            if settings.webinar_replay_url
+            else HERMES_WEBINAR_REPLAY_PENDING_TEXT
+        )
+    registration = (
+        await storage.get_webinar_registration(
+            settings.webinar_event_id,
+            lead.telegram_id,
+        )
+        if settings.webinar_event_id is not None
+        else None
+    )
+    await storage.add_event(
+        lead.telegram_id,
+        "webinar_card_shown",
+        webinar_event_payload(settings, lead, phase=phase),
+    )
+    await renderer.render_screen(
+        lead=lead,
+        text=text,
+        reply_markup=hermes_webinar_card_keyboard(
+            phase,
+            registered=registration is not None,
+            join_available=bool(settings.webinar_join_url),
+            replay_available=bool(settings.webinar_replay_url),
+        ),
+        source_message=source_message,
+        mode="send_new",
+    )
+
+
+async def render_funnel_end(
+    renderer: BotScreenRenderer,
+    storage: VcStorage,
+    settings: Settings,
+    lead: Lead,
+    *,
+    source_message: Message | None = None,
+) -> None:
+    phase = webinar_phase(settings)
+    if phase == "personal_plan":
+        await renderer.render_screen(
+            lead=lead,
+            text=HERMES_COMMERCIAL_TRANSITION_TEXT,
+            reply_markup=hermes_business_cta_keyboard(),
+            source_message=source_message,
+            mode="send_new",
+        )
+        return
+    await render_automatic_plan(
+        renderer,
+        lead,
+        source_message=source_message,
+    )
+    if phase != "disabled":
+        await render_webinar_card(
+            renderer,
+            storage,
+            settings,
+            lead,
+        )
+
+
 async def complete_hermes_route(
     renderer: BotScreenRenderer,
     storage: VcStorage,
@@ -1150,6 +1525,9 @@ async def complete_hermes_route(
             statuses=delivery.statuses,
         )
     if track.startswith("setup_"):
+        phase = webinar_phase(settings)
+        if phase != "personal_plan":
+            await render_automatic_plan(renderer, lead)
         await renderer.render_screen(
             lead=lead,
             text=(
@@ -1158,7 +1536,15 @@ async def complete_hermes_route(
             ),
             reply_markup=hermes_setup_help_keyboard(),
             mode="send_new",
+            persistent=phase != "personal_plan",
         )
+        if phase not in {"personal_plan", "disabled"}:
+            await render_webinar_card(
+                renderer,
+                storage,
+                settings,
+                lead,
+            )
         return
     await renderer.render_screen(
         lead=lead,
@@ -1167,11 +1553,11 @@ async def complete_hermes_route(
         mode="send_new",
         persistent=True,
     )
-    await renderer.render_screen(
-        lead=lead,
-        text=HERMES_COMMERCIAL_TRANSITION_TEXT,
-        reply_markup=hermes_business_cta_keyboard(),
-        mode="send_new",
+    await render_funnel_end(
+        renderer,
+        storage,
+        settings,
+        lead,
     )
 
 
@@ -1771,6 +2157,7 @@ def admin_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="Лиды", callback_data="admin:leads")],
             [InlineKeyboardButton(text="Статистика", callback_data="admin:stats")],
+            [InlineKeyboardButton(text="Вебинар E02", callback_data="admin:webinar")],
             [InlineKeyboardButton(text="Материалы", callback_data="admin:materials")],
             [InlineKeyboardButton(text="Ссылки", callback_data="admin:links")],
         ]
@@ -2107,6 +2494,60 @@ def stats_text(stats: dict) -> str:
 Начали заявку: {stats['applications_started']}
 Отправили заявку: {stats['applications_submitted']}
 Запросы помощи с Hermes: {stats['support_requests']}"""
+
+
+async def webinar_admin_text(
+    storage: VcStorage,
+    settings: Settings,
+) -> str:
+    event_id = settings.webinar_event_id or "не настроен"
+    phase = webinar_phase(settings)
+    if settings.webinar_event_id is None:
+        stats = {
+            "registrations": 0,
+            "by_source": {},
+            "by_route": {},
+            "reminder_24h": 0,
+            "reminder_3h": 0,
+            "reminder_15m": 0,
+            "join_clicked": 0,
+            "webinar_card_shown": 0,
+            "webinar_registered": 0,
+            "registration_conversion": 0.0,
+            "join_click_conversion": 0.0,
+        }
+    else:
+        stats = await storage.webinar_stats(settings.webinar_event_id)
+    funnel_stats = await storage.stats()
+
+    def groups(values: dict[str, int]) -> str:
+        if not values:
+            return "нет"
+        return ", ".join(f"{key}: {value}" for key, value in values.items())
+
+    return f"""Вебинар {event_id}
+
+Режим: {phase}
+Join URL настроен: {'да' if settings.webinar_join_url else 'нет'}
+Replay URL настроен: {'да' if settings.webinar_replay_url else 'нет'}
+
+Уникальные старты: {funnel_stats['unique_starts']}
+Завершили роутер: {funnel_stats['router_completed']}
+Получили bundle: {funnel_stats['bundle_delivered']}
+Карточку увидели: {stats['webinar_card_shown']}
+Зарегистрировались: {stats['webinar_registered']}
+
+Регистрации: {stats['registrations']}
+По источникам: {groups(stats['by_source'])}
+По маршрутам: {groups(stats['by_route'])}
+
+Напоминания 24h: {stats['reminder_24h']}
+Напоминания 3h: {stats['reminder_3h']}
+Напоминания 15m: {stats['reminder_15m']}
+Клики на эфир: {stats['join_clicked']}
+
+Конверсия в регистрацию: {stats['registration_conversion']:.1%}
+Конверсия в клик на эфир: {stats['join_click_conversion']:.1%}"""
 
 
 async def send_leads_csv(message: Message, storage: VcStorage) -> None:

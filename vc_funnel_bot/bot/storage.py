@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import aiosqlite
 
 from .analytics import calculate_temperature
-from .models import Event, Lead, Material, SourceInfo
+from .models import Event, Lead, Material, SourceInfo, WebinarRegistration
 
 
 LEAD_COLUMNS = [
@@ -53,6 +53,43 @@ LEAD_COLUMNS = [
     "updated_at",
     "last_interaction_at",
 ]
+
+WEBINAR_REGISTRATION_COLUMNS = [
+    "id",
+    "event_id",
+    "telegram_user_id",
+    "telegram_chat_id",
+    "username",
+    "first_name",
+    "source",
+    "start_payload",
+    "campaign",
+    "post",
+    "selected_route",
+    "bottleneck",
+    "registered_at",
+    "registration_status",
+    "reminder_24h_sent_at",
+    "reminder_3h_sent_at",
+    "reminder_15m_sent_at",
+    "join_clicked_at",
+    "replay_clicked_at",
+    "created_at",
+    "updated_at",
+]
+
+REMINDER_FIELDS = {
+    "24h": "reminder_24h_sent_at",
+    "3h": "reminder_3h_sent_at",
+    "15m": "reminder_15m_sent_at",
+}
+WEBINAR_ROUTES = {
+    "find_business",
+    "offer",
+    "build",
+    "deal",
+    "setup_help",
+}
 
 
 class VcStorage:
@@ -170,6 +207,52 @@ class VcStorage:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS vc_funnel_webinar_registrations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT NOT NULL,
+                telegram_user_id INTEGER NOT NULL,
+                telegram_chat_id INTEGER NOT NULL,
+                username TEXT,
+                first_name TEXT,
+                source TEXT NOT NULL DEFAULT 'unknown',
+                start_payload TEXT,
+                campaign TEXT,
+                post TEXT,
+                selected_route TEXT,
+                bottleneck TEXT,
+                registered_at TEXT NOT NULL,
+                registration_status TEXT NOT NULL DEFAULT 'registered',
+                reminder_24h_sent_at TEXT,
+                reminder_3h_sent_at TEXT,
+                reminder_15m_sent_at TEXT,
+                join_clicked_at TEXT,
+                replay_clicked_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(event_id, telegram_user_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_vc_webinar_event_status
+                ON vc_funnel_webinar_registrations (
+                    event_id,
+                    registration_status
+                );
+            CREATE INDEX IF NOT EXISTS idx_vc_webinar_reminder_24h
+                ON vc_funnel_webinar_registrations (
+                    event_id,
+                    reminder_24h_sent_at
+                );
+            CREATE INDEX IF NOT EXISTS idx_vc_webinar_reminder_3h
+                ON vc_funnel_webinar_registrations (
+                    event_id,
+                    reminder_3h_sent_at
+                );
+            CREATE INDEX IF NOT EXISTS idx_vc_webinar_reminder_15m
+                ON vc_funnel_webinar_registrations (
+                    event_id,
+                    reminder_15m_sent_at
+                );
             """
         )
         await self._ensure_columns(
@@ -348,6 +431,8 @@ class VcStorage:
             result[f"starts_{source}"] = int(row["total"]) if row else 0
         result["questions_completed"] = counts.get("situation_selected", 0)
         result["bundle_delivered"] = counts.get("bundle_delivered", 0)
+        result["unique_starts"] = result["starts_total"]
+        result["router_completed"] = result["questions_completed"]
         row = await (
             await self.db.execute(
                 """
@@ -374,6 +459,282 @@ class VcStorage:
     async def export_leads_rows(self) -> list[dict[str, Any]]:
         cursor = await self.db.execute(f"SELECT {', '.join(LEAD_COLUMNS)} FROM vc_funnel_leads ORDER BY updated_at DESC")
         return [dict(row) for row in await cursor.fetchall()]
+
+    async def get_webinar_registration(
+        self,
+        event_id: str,
+        telegram_user_id: int,
+    ) -> WebinarRegistration | None:
+        cursor = await self.db.execute(
+            f"""
+            SELECT {", ".join(WEBINAR_REGISTRATION_COLUMNS)}
+            FROM vc_funnel_webinar_registrations
+            WHERE event_id = ? AND telegram_user_id = ?
+            """,
+            (event_id, telegram_user_id),
+        )
+        row = await cursor.fetchone()
+        return self._row_to_webinar_registration(row) if row else None
+
+    async def upsert_webinar_registration(
+        self,
+        *,
+        event_id: str,
+        telegram_user_id: int,
+        telegram_chat_id: int,
+        username: str | None,
+        first_name: str | None,
+        source: str,
+        start_payload: str | None,
+        campaign: str | None,
+        post: str | None,
+        selected_route: str | None,
+        bottleneck: str | None,
+    ) -> tuple[WebinarRegistration, bool]:
+        if (
+            selected_route is not None
+            and selected_route not in WEBINAR_ROUTES
+        ):
+            raise ValueError(
+                f"Unsupported webinar route: {selected_route}"
+            )
+        now = self.now()
+        cursor = await self.db.execute(
+            """
+            INSERT INTO vc_funnel_webinar_registrations (
+                event_id, telegram_user_id, telegram_chat_id, username,
+                first_name, source, start_payload, campaign, post,
+                selected_route, bottleneck, registered_at,
+                registration_status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'registered', ?, ?)
+            ON CONFLICT(event_id, telegram_user_id) DO NOTHING
+            """,
+            (
+                event_id,
+                telegram_user_id,
+                telegram_chat_id,
+                username,
+                first_name,
+                source,
+                start_payload,
+                campaign,
+                post,
+                selected_route,
+                bottleneck,
+                now,
+                now,
+                now,
+            ),
+        )
+        created = cursor.rowcount == 1
+        if not created:
+            await self.db.execute(
+                """
+                UPDATE vc_funnel_webinar_registrations
+                SET telegram_chat_id = ?,
+                    username = ?,
+                    first_name = ?,
+                    source = ?,
+                    start_payload = ?,
+                    campaign = ?,
+                    post = ?,
+                    selected_route = ?,
+                    bottleneck = ?,
+                    registration_status = 'registered',
+                    updated_at = ?
+                WHERE event_id = ? AND telegram_user_id = ?
+                """,
+                (
+                    telegram_chat_id,
+                    username,
+                    first_name,
+                    source,
+                    start_payload,
+                    campaign,
+                    post,
+                    selected_route,
+                    bottleneck,
+                    now,
+                    event_id,
+                    telegram_user_id,
+                ),
+            )
+        await self.db.commit()
+        registration = await self.get_webinar_registration(
+            event_id,
+            telegram_user_id,
+        )
+        if registration is None:
+            raise RuntimeError("Webinar registration was not saved")
+        return registration, created
+
+    async def list_due_webinar_registrations(
+        self,
+        event_id: str,
+        reminder_type: str,
+    ) -> list[WebinarRegistration]:
+        field = REMINDER_FIELDS.get(reminder_type)
+        if field is None:
+            raise ValueError(f"Unknown reminder type: {reminder_type}")
+        cursor = await self.db.execute(
+            f"""
+            SELECT {", ".join(WEBINAR_REGISTRATION_COLUMNS)}
+            FROM vc_funnel_webinar_registrations
+            WHERE event_id = ?
+              AND registration_status = 'registered'
+              AND {field} IS NULL
+            ORDER BY id
+            """,
+            (event_id,),
+        )
+        return [
+            self._row_to_webinar_registration(row)
+            for row in await cursor.fetchall()
+        ]
+
+    async def mark_webinar_reminder_sent(
+        self,
+        event_id: str,
+        telegram_user_id: int,
+        reminder_type: str,
+    ) -> bool:
+        field = REMINDER_FIELDS.get(reminder_type)
+        if field is None:
+            raise ValueError(f"Unknown reminder type: {reminder_type}")
+        now = self.now()
+        cursor = await self.db.execute(
+            f"""
+            UPDATE vc_funnel_webinar_registrations
+            SET {field} = ?, updated_at = ?
+            WHERE event_id = ?
+              AND telegram_user_id = ?
+              AND {field} IS NULL
+            """,
+            (now, now, event_id, telegram_user_id),
+        )
+        await self.db.commit()
+        return cursor.rowcount == 1
+
+    async def clear_webinar_reminder_sent(
+        self,
+        event_id: str,
+        telegram_user_id: int,
+        reminder_type: str,
+    ) -> None:
+        field = REMINDER_FIELDS.get(reminder_type)
+        if field is None:
+            raise ValueError(f"Unknown reminder type: {reminder_type}")
+        await self.db.execute(
+            f"""
+            UPDATE vc_funnel_webinar_registrations
+            SET {field} = NULL, updated_at = ?
+            WHERE event_id = ? AND telegram_user_id = ?
+            """,
+            (self.now(), event_id, telegram_user_id),
+        )
+        await self.db.commit()
+
+    async def mark_webinar_click(
+        self,
+        event_id: str,
+        telegram_user_id: int,
+        click_type: str,
+    ) -> bool:
+        field = {
+            "join": "join_clicked_at",
+            "replay": "replay_clicked_at",
+        }.get(click_type)
+        if field is None:
+            raise ValueError(f"Unknown webinar click type: {click_type}")
+        now = self.now()
+        cursor = await self.db.execute(
+            f"""
+            UPDATE vc_funnel_webinar_registrations
+            SET {field} = COALESCE({field}, ?), updated_at = ?
+            WHERE event_id = ? AND telegram_user_id = ?
+            """,
+            (now, now, event_id, telegram_user_id),
+        )
+        await self.db.commit()
+        return cursor.rowcount == 1
+
+    async def webinar_stats(self, event_id: str) -> dict[str, Any]:
+        result: dict[str, Any] = {"event_id": event_id}
+        row = await (
+            await self.db.execute(
+                """
+                SELECT COUNT(*) AS registrations,
+                       SUM(reminder_24h_sent_at IS NOT NULL) AS reminder_24h,
+                       SUM(reminder_3h_sent_at IS NOT NULL) AS reminder_3h,
+                       SUM(reminder_15m_sent_at IS NOT NULL) AS reminder_15m,
+                       SUM(join_clicked_at IS NOT NULL) AS join_clicked
+                FROM vc_funnel_webinar_registrations
+                WHERE event_id = ? AND registration_status = 'registered'
+                """,
+                (event_id,),
+            )
+        ).fetchone()
+        result.update(
+            {
+                "registrations": int(row["registrations"] or 0),
+                "reminder_24h": int(row["reminder_24h"] or 0),
+                "reminder_3h": int(row["reminder_3h"] or 0),
+                "reminder_15m": int(row["reminder_15m"] or 0),
+                "join_clicked": int(row["join_clicked"] or 0),
+            }
+        )
+
+        for column, result_key in (
+            ("source", "by_source"),
+            ("selected_route", "by_route"),
+        ):
+            cursor = await self.db.execute(
+                f"""
+                SELECT COALESCE({column}, 'unknown') AS label,
+                       COUNT(*) AS total
+                FROM vc_funnel_webinar_registrations
+                WHERE event_id = ? AND registration_status = 'registered'
+                GROUP BY COALESCE({column}, 'unknown')
+                ORDER BY total DESC, label
+                """,
+                (event_id,),
+            )
+            result[result_key] = {
+                str(item["label"]): int(item["total"])
+                for item in await cursor.fetchall()
+            }
+
+        event_counts: dict[str, int] = {}
+        for event_type in (
+            "webinar_card_shown",
+            "webinar_registered",
+            "webinar_join_clicked",
+        ):
+            count_row = await (
+                await self.db.execute(
+                    """
+                    SELECT COUNT(DISTINCT telegram_id) AS total
+                    FROM vc_funnel_events
+                    WHERE event_type = ?
+                      AND json_extract(event_payload_json, '$.event_id') = ?
+                    """,
+                    (event_type, event_id),
+                )
+            ).fetchone()
+            event_counts[event_type] = int(count_row["total"] or 0)
+        card_shown = event_counts["webinar_card_shown"]
+        registered = event_counts["webinar_registered"]
+        joined = event_counts["webinar_join_clicked"]
+        result["webinar_card_shown"] = card_shown
+        result["webinar_registered"] = registered
+        result["registration_conversion"] = (
+            registered / card_shown if card_shown else 0.0
+        )
+        result["join_click_conversion"] = (
+            joined / registered if registered else 0.0
+        )
+        return result
 
     async def reset_lead_for_test(self, telegram_id: int) -> bool:
         async with self._lead_lock(telegram_id):
@@ -1078,6 +1439,34 @@ class VcStorage:
             telegram_file_name=row["telegram_file_name"],
             telegram_caption=row["telegram_caption"],
             is_active=bool(row["is_active"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    @staticmethod
+    def _row_to_webinar_registration(
+        row: aiosqlite.Row,
+    ) -> WebinarRegistration:
+        return WebinarRegistration(
+            id=int(row["id"]),
+            event_id=row["event_id"],
+            telegram_user_id=int(row["telegram_user_id"]),
+            telegram_chat_id=int(row["telegram_chat_id"]),
+            username=row["username"],
+            first_name=row["first_name"],
+            source=row["source"],
+            start_payload=row["start_payload"],
+            campaign=row["campaign"],
+            post=row["post"],
+            selected_route=row["selected_route"],
+            bottleneck=row["bottleneck"],
+            registered_at=row["registered_at"],
+            registration_status=row["registration_status"],
+            reminder_24h_sent_at=row["reminder_24h_sent_at"],
+            reminder_3h_sent_at=row["reminder_3h_sent_at"],
+            reminder_15m_sent_at=row["reminder_15m_sent_at"],
+            join_clicked_at=row["join_clicked_at"],
+            replay_clicked_at=row["replay_clicked_at"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

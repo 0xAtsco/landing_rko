@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -10,6 +12,7 @@ from dotenv import load_dotenv
 
 DEFAULT_SQLITE_PATH = "./data/vc_funnel.db"
 DEFAULT_TIMEZONE = "Europe/Moscow"
+WEBINAR_EVENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 
 
 @dataclass(frozen=True)
@@ -38,6 +41,16 @@ class Settings:
     ux_typing_delay_seconds: float = 0.8
     ux_typing_delay_test_mode: bool = False
     enable_typewriter: bool = False
+    funnel_end_mode: str = "personal_plan"
+    webinar_enabled: bool = False
+    webinar_event_id: str | None = None
+    webinar_title: str | None = None
+    webinar_start_at: datetime | None = None
+    webinar_end_at: datetime | None = None
+    webinar_timezone_name: str = DEFAULT_TIMEZONE
+    webinar_timezone: ZoneInfo | None = None
+    webinar_join_url: str | None = None
+    webinar_replay_url: str | None = None
 
 
 def _bool_env(name: str, default: bool) -> bool:
@@ -91,6 +104,22 @@ def _float_env(name: str, default: float) -> float:
         raise RuntimeError(f"{name} must be a number") from exc
 
 
+def _datetime_env(
+    name: str,
+    timezone: ZoneInfo,
+) -> datetime | None:
+    raw = _optional_str(name)
+    if raw is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be an ISO 8601 datetime") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise RuntimeError(f"{name} must include a UTC offset")
+    return parsed.astimezone(timezone)
+
+
 def load_settings() -> Settings:
     env_path = Path(__file__).resolve().parents[1] / ".env"
     load_dotenv(env_path)
@@ -107,6 +136,73 @@ def load_settings() -> Settings:
 
     sqlite_path = (os.getenv("VC_SQLITE_PATH") or DEFAULT_SQLITE_PATH).strip()
     sales_chat_ids = _int_tuple_env("VC_SALES_CHAT_ID")
+    funnel_end_mode = (
+        os.getenv("VC_FUNNEL_END_MODE") or "personal_plan"
+    ).strip().lower()
+    if funnel_end_mode not in {
+        "personal_plan",
+        "webinar",
+        "replay",
+        "disabled",
+    }:
+        raise RuntimeError(
+            "VC_FUNNEL_END_MODE must be personal_plan, webinar, replay or disabled"
+        )
+
+    webinar_enabled = _bool_env("VC_WEBINAR_ENABLED", False)
+    webinar_timezone_name = (
+        os.getenv("VC_WEBINAR_TIMEZONE") or DEFAULT_TIMEZONE
+    ).strip()
+    if webinar_timezone_name != DEFAULT_TIMEZONE:
+        raise RuntimeError(
+            f"VC_WEBINAR_TIMEZONE must be {DEFAULT_TIMEZONE}"
+        )
+    try:
+        webinar_timezone = ZoneInfo(DEFAULT_TIMEZONE)
+    except ZoneInfoNotFoundError as exc:
+        raise RuntimeError(
+            f"Unknown VC_WEBINAR_TIMEZONE: {webinar_timezone_name}"
+        ) from exc
+
+    webinar_event_id = _optional_str("VC_WEBINAR_EVENT_ID")
+    if (
+        webinar_event_id is not None
+        and WEBINAR_EVENT_ID_PATTERN.fullmatch(webinar_event_id) is None
+    ):
+        raise RuntimeError(
+            "VC_WEBINAR_EVENT_ID must contain only letters, numbers, "
+            "dots, underscores, colons or hyphens"
+        )
+    webinar_title = _optional_str("VC_WEBINAR_TITLE")
+    webinar_start_at = _datetime_env(
+        "VC_WEBINAR_START_AT",
+        webinar_timezone,
+    )
+    webinar_end_at = _datetime_env(
+        "VC_WEBINAR_END_AT",
+        webinar_timezone,
+    )
+    if webinar_enabled and funnel_end_mode in {"webinar", "replay"}:
+        missing = [
+            name
+            for name, value in (
+                ("VC_WEBINAR_EVENT_ID", webinar_event_id),
+                ("VC_WEBINAR_TITLE", webinar_title),
+                ("VC_WEBINAR_START_AT", webinar_start_at),
+                ("VC_WEBINAR_END_AT", webinar_end_at),
+            )
+            if value is None
+        ]
+        if missing:
+            raise RuntimeError(
+                f"Missing webinar configuration: {', '.join(missing)}"
+            )
+        assert webinar_start_at is not None
+        assert webinar_end_at is not None
+        if webinar_end_at <= webinar_start_at:
+            raise RuntimeError(
+                "VC_WEBINAR_END_AT must be later than VC_WEBINAR_START_AT"
+            )
 
     return Settings(
         bot_token=bot_token,
@@ -133,6 +229,16 @@ def load_settings() -> Settings:
         ux_typing_delay_seconds=_float_env("VC_UX_TYPING_DELAY_SECONDS", 0.8),
         ux_typing_delay_test_mode=_bool_env("VC_UX_TYPING_DELAY_TEST_MODE", False),
         enable_typewriter=_bool_env("VC_ENABLE_TYPEWRITER", False),
+        funnel_end_mode=funnel_end_mode,
+        webinar_enabled=webinar_enabled,
+        webinar_event_id=webinar_event_id,
+        webinar_title=webinar_title,
+        webinar_start_at=webinar_start_at,
+        webinar_end_at=webinar_end_at,
+        webinar_timezone_name=webinar_timezone_name,
+        webinar_timezone=webinar_timezone,
+        webinar_join_url=_optional_str("VC_WEBINAR_JOIN_URL"),
+        webinar_replay_url=_optional_str("VC_WEBINAR_REPLAY_URL"),
     )
 
 

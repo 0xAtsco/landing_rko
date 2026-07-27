@@ -152,6 +152,31 @@ class Material:
     updated_at: str
 
 
+@dataclass(frozen=True)
+class WebinarRegistration:
+    id: int
+    event_id: str
+    telegram_user_id: int
+    telegram_chat_id: int
+    username: str | None
+    first_name: str | None
+    source: str
+    start_payload: str | None
+    campaign: str | None
+    post: str | None
+    selected_route: str | None
+    bottleneck: str | None
+    registered_at: str
+    registration_status: str
+    reminder_24h_sent_at: str | None
+    reminder_3h_sent_at: str | None
+    reminder_15m_sent_at: str | None
+    join_clicked_at: str | None
+    replay_clicked_at: str | None
+    created_at: str
+    updated_at: str
+
+
 LEAD_STATUSES = {
     "started",
     "materials_requested",

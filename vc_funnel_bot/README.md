@@ -7,12 +7,13 @@
 ## Что делает
 
 Бот принимает трафик из YouTube и Telegram, за два вопроса определяет узкое
-звено, выдаёт подходящие материалы и предлагает один следующий шаг —
-персональный план запуска. Менеджеры получают заявку только после явного
-нажатия кнопки, выбора срока и текстового контекста. Помощь с запуском
-Hermes отделена от коммерческих заявок.
+звено и выдаёт подходящие материалы. Финальный шаг переключается через env:
+evergreen-заявка менеджеру, вебинар, запись или отсутствие CTA. В режиме
+E02 бот автоматически показывает план из трёх действий, регистрирует одним
+нажатием и отправляет persisted-напоминания.
 
-P0 работает без LLM, voice, STT, Google Sheets и follow-up scheduler.
+Бот работает без LLM, voice, STT, Google Sheets, CRM и отдельной
+веб-регистрации.
 
 ## Запуск
 
@@ -49,6 +50,15 @@ VC_TELEGRAM_MATERIALS_URL=
 VC_DEFAULT_TIMEZONE=Europe/Moscow
 VC_ENABLE_TEXT_TRIGGERS=true
 VC_ENABLE_FOLLOWUPS=false
+VC_FUNNEL_END_MODE=webinar
+VC_WEBINAR_ENABLED=true
+VC_WEBINAR_EVENT_ID=E02
+VC_WEBINAR_TITLE=Где находить новых клиентов на РКО
+VC_WEBINAR_START_AT=2026-08-03T19:00:00+03:00
+VC_WEBINAR_END_AT=2026-08-03T20:00:00+03:00
+VC_WEBINAR_TIMEZONE=Europe/Moscow
+VC_WEBINAR_JOIN_URL=
+VC_WEBINAR_REPLAY_URL=
 VC_CLEANUP_OLD_BOT_MESSAGES=true
 VC_KEEP_LAST_BOT_MESSAGES=1
 VC_UX_TYPING_DELAY_ENABLED=true
@@ -62,6 +72,17 @@ VC_DEBUG=false
 `VC_BOT_TOKEN` обязателен. Если он не задан, приложение завершится с понятной ошибкой.
 
 `VC_DATABASE_URL` в P0 поддерживает только `sqlite:///...`. Если он пустой, используется `VC_SQLITE_PATH`.
+
+Код по умолчанию использует безопасный `personal_plan`. Значения
+`webinar` и `replay` требуют `VC_WEBINAR_ENABLED=true` и полной конфигурации
+события. Доступные режимы:
+
+- `personal_plan` — прежняя заявка менеджеру;
+- `webinar` — автоматические registration/live/replay состояния;
+- `replay` — принудительный экран записи;
+- `disabled` — материалы и план без финального CTA.
+
+Join/replay URL не попадают в events и технические логи.
 
 ## Deep Links
 
@@ -85,10 +106,12 @@ youtube_hermes / telegram_hermes / direct
   -> один из пяти результатов
   -> bundle материалов
   -> полная инструкция по отдельной кнопке
-  -> одна CTA на персональный план
-  -> срок + текстовый контекст
-  -> заявка менеджеру
+  -> автоматический план из трёх действий
+  -> регистрация E02 / эфир / запись
 ```
+
+В `personal_plan` последние две строки заменяются прежним маршрутом:
+срок → текстовый контекст → заявка менеджеру.
 
 Business-ветки: `find_business`, `offer`, `build`, `deal`. Setup-ветка
 различает Windows, macOS, подключение модели и другую ошибку. Пока три
@@ -520,6 +543,7 @@ vc_funnel_leads
 vc_funnel_events
 vc_funnel_materials
 vc_funnel_payload_materials
+vc_funnel_webinar_registrations
 ```
 
 Один `telegram_id` = одна активная карточка.
@@ -527,6 +551,15 @@ vc_funnel_payload_materials
 Новые поля для UX attribution и чистого rendering: `source`, `entry_surface`, `entry_mode`, `post_id`, `post_slug`, `post_topic`, `application_context`, `last_bot_screen_message_id`, `bot_screen_message_ids`.
 
 После `call_requested` или `sales_notified` повторный `/start` не затирает оригинальный источник, а пишет новый payload в `latest_start_payload` и event.
+
+Регистрация уникальна по `(event_id, telegram_user_id)`. В той же строке
+хранятся snapshot атрибуции, три reminder timestamps и первые клики на
+эфир/запись. Таблица создаётся аддитивно при старте; существующие данные не
+перезаписываются.
+
+Reminder worker работает внутри того же polling-процесса. После рестарта он
+читает persisted timestamps и отправляет только текущее актуальное
+напоминание, не всю пропущенную цепочку.
 
 ## Проверка
 
@@ -553,6 +586,6 @@ pnpm build
 
 ## P1 TODO
 
-- Follow-up reminders через отдельный VC scheduler.
 - Google Sheets export только через отдельные `VC_GOOGLE_*` env.
-- Calendar booking.
+- Отдельный dashboard поверх webinar-аналитики, если Telegram admin станет
+  недостаточно.

@@ -271,6 +271,136 @@ def hermes_setup_help_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def hermes_webinar_card_keyboard(
+    phase: str,
+    *,
+    registered: bool = False,
+    join_available: bool = False,
+    replay_available: bool = False,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if phase == "registration":
+        button = HERMES_FLOW_SPEC["webinar_cta"]
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=button["label"],
+                    callback_data=button["callback"],
+                )
+            ]
+        )
+    elif phase == "live":
+        if registered and join_available:
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text="Войти в эфир",
+                        callback_data="hb:webinar:join",
+                    )
+                ]
+            )
+        elif not registered:
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text=(
+                            "Записаться и войти"
+                            if join_available
+                            else "Записаться на вебинар"
+                        ),
+                        callback_data="hb:webinar:register",
+                    )
+                ]
+            )
+    elif phase == "replay" and replay_available:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Посмотреть запись",
+                    callback_data="hb:webinar:replay",
+                )
+            ]
+        )
+
+    playbook = HERMES_FLOW_SPEC["playbook_button"]
+    materials = HERMES_FLOW_SPEC["materials_return_button"]
+    rows.extend(
+        [
+            [
+                InlineKeyboardButton(
+                    text=playbook["label"],
+                    callback_data=playbook["callback"],
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=materials["label"],
+                    callback_data=materials["callback"],
+                )
+            ],
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def hermes_webinar_confirmation_keyboard(
+    phase: str,
+    *,
+    join_available: bool = False,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if phase == "live" and join_available:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Войти в эфир",
+                    callback_data="hb:webinar:join",
+                )
+            ]
+        )
+    elif phase != "live":
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="Добавить в календарь",
+                    callback_data="hb:webinar:calendar",
+                )
+            ]
+        )
+    materials = HERMES_FLOW_SPEC["materials_return_button"]
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text=materials["label"],
+                callback_data=materials["callback"],
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def hermes_webinar_join_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Войти в эфир",
+                    callback_data="hb:webinar:join",
+                )
+            ]
+        ]
+    )
+
+
+def webinar_url_keyboard(
+    text: str,
+    url: str,
+) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=text, url=url)]]
+    )
+
+
 def hermes_urgency_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[

@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 4,
   "payload": "am_hermes_video_route",
   "public_payloads": {
     "youtube": "youtube_hermes",
@@ -13,22 +13,22 @@
     "options": [
       {
         "callback": "hb:stage:find",
-        "label": "🧭 Не знаю, кому предложить",
+        "label": "🧭 Нет клиентов",
         "pain": "find_business"
       },
       {
         "callback": "hb:stage:offer",
-        "label": "💬 Есть бизнес, не знаю, что предложить",
+        "label": "💬 Есть клиенты, не знаю что предложить",
         "pain": "offer"
       },
       {
         "callback": "hb:stage:build",
-        "label": "🛠 Есть задача, не могу собрать решение",
+        "label": "🛠 Есть предложение, нет решения",
         "pain": "build"
       },
       {
         "callback": "hb:stage:deal",
-        "label": "💰 Решение есть, не понимаю, как довести до сделки",
+        "label": "💰 Есть решение, нет сделки",
         "pain": "deal"
       },
       {
@@ -117,13 +117,28 @@
     ],
     "setup_other": []
   },
+  "main_menu": {
+    "text": "Главное меню\n\nПодберите материалы под ваш текущий этап или получите полную инструкцию по всей связке.",
+    "route_button": {
+      "callback": "hb:route",
+      "label": "🧭 Подобрать материалы"
+    }
+  },
   "playbook_button": {
     "callback": "hb:playbook",
-    "label": "📘 Полная инструкция по всей связке"
+    "label": "Открыть полную инструкцию"
   },
   "business_cta": {
     "callback": "hb:plan",
     "label": "🎯 Получить персональный план запуска"
+  },
+  "webinar_cta": {
+    "callback": "hb:webinar:register",
+    "label": "Записаться на вебинар"
+  },
+  "materials_return_button": {
+    "callback": "hb:materials",
+    "label": "Вернуться к материалам"
   },
   "setup_cta": {
     "callback": "hb:setup_help",
@@ -156,6 +171,14 @@
     "situation_selected",
     "bundle_delivered",
     "full_playbook_requested",
+    "webinar_card_shown",
+    "webinar_registration_clicked",
+    "webinar_registered",
+    "webinar_already_registered",
+    "webinar_calendar_clicked",
+    "webinar_reminder_sent",
+    "webinar_join_clicked",
+    "webinar_replay_clicked",
     "application_started",
     "urgency_selected",
     "application_submitted",
