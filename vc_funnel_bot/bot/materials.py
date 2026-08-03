@@ -58,11 +58,11 @@ def _from_row(material: Material, title_override: str | None = None) -> Resolved
         title=title_override or material.title,
         body=material.body,
         url=material.url,
-        telegram_file_id=material.telegram_file_id,
-        telegram_file_type=material.telegram_file_type,
-        telegram_file_name=material.telegram_file_name,
+        telegram_file_id=None if material.telegram_file_status == "invalid" else material.telegram_file_id,
+        telegram_file_type=None if material.telegram_file_status == "invalid" else material.telegram_file_type,
+        telegram_file_name=None if material.telegram_file_status == "invalid" else material.telegram_file_name,
         telegram_caption=material.telegram_caption,
-        status="configured",
+        status="invalid" if material.telegram_file_status == "invalid" else "configured",
         source="sqlite",
     )
 
@@ -107,6 +107,8 @@ async def resolve_material_key(
         status = (
             "inactive"
             if not material.is_active
+            else "invalid"
+            if material.telegram_file_status == "invalid"
             else "loaded"
             if resolved.has_content
             else "missing"
