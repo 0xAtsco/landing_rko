@@ -148,6 +148,9 @@ class Material:
     telegram_file_name: str | None
     telegram_caption: str | None
     is_active: bool
+    telegram_file_status: str
+    telegram_file_verified_at: str | None
+    telegram_file_error: str | None
     created_at: str
     updated_at: str
 
@@ -175,6 +178,58 @@ class WebinarRegistration:
     replay_clicked_at: str | None
     created_at: str
     updated_at: str
+
+
+@dataclass(frozen=True)
+class WebinarEventConfig:
+    event_id: str
+    title: str
+    start_at: str | None
+    timezone: str
+    join_url: str | None
+    replay_url: str | None
+    phase: str
+    event_version: int
+    support_manager_chat_id: int | None
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class WebinarDelivery:
+    id: int
+    event_id: str
+    event_version: int
+    telegram_user_id: int
+    telegram_chat_id: int
+    delivery_type: str
+    scheduled_at: str
+    status: str
+    payload_json: str | None
+    sent_at: str | None
+    error_type: str | None
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class SupportTicket:
+    id: int
+    user_id: int
+    telegram_chat_id: int
+    username: str | None
+    source: str
+    topic: str
+    message: str
+    status: str
+    assigned_admin_id: int | None
+    answer_text: str | None
+    answered_by_admin_id: int | None
+    created_at: str
+    updated_at: str
+    answered_at: str | None
+    event_version: int | None
+    route_key: str | None
 
 
 LEAD_STATUSES = {

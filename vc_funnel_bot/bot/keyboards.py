@@ -245,6 +245,25 @@ def hermes_playbook_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def hermes_playbook_subscription_keyboard(
+    invite_url: str | None,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if invite_url:
+        rows.append(
+            [InlineKeyboardButton(text="Подписаться на канал", url=invite_url)]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="Проверить подписку",
+                callback_data="hb:playbook:check",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def hermes_business_cta_keyboard() -> InlineKeyboardMarkup:
     button = HERMES_FLOW_SPEC["business_cta"]
     return InlineKeyboardMarkup(
@@ -267,6 +286,17 @@ def hermes_setup_help_keyboard() -> InlineKeyboardMarkup:
                     text=button["label"], callback_data=button["callback"]
                 )
             ]
+        ]
+    )
+
+
+def vc_main_menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Получить материалы", callback_data="vc:menu:materials")],
+            [InlineKeyboardButton(text="Главный эфир", callback_data="vc:menu:webinar")],
+            [InlineKeyboardButton(text="Задать вопрос команде", callback_data="support:start")],
+            [InlineKeyboardButton(text="Пройти маршрут заново", callback_data="vc:menu:restart")],
         ]
     )
 
@@ -326,6 +356,12 @@ def hermes_webinar_card_keyboard(
     materials = HERMES_FLOW_SPEC["materials_return_button"]
     rows.extend(
         [
+            [
+                InlineKeyboardButton(
+                    text="Задать вопрос команде",
+                    callback_data="support:start",
+                )
+            ],
             [
                 InlineKeyboardButton(
                     text=playbook["label"],
@@ -388,6 +424,30 @@ def hermes_webinar_join_keyboard() -> InlineKeyboardMarkup:
                     callback_data="hb:webinar:join",
                 )
             ]
+        ]
+    )
+
+
+def support_topics_keyboard() -> InlineKeyboardMarkup:
+    topics = (
+        ("Как использовать материалы", "support:topic:materials"),
+        ("Как выбрать ветку", "support:topic:route"),
+        ("Установка Hermes", "support:topic:setup"),
+        ("Проблема со входом на эфир", "support:topic:entry"),
+        ("Вопрос по программе", "support:topic:program"),
+        ("Другое", "support:topic:other"),
+    )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=label, callback_data=data)] for label, data in topics]
+    )
+
+
+def support_ticket_keyboard(ticket_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Взять в работу", callback_data=f"ticket:claim:{ticket_id}")],
+            [InlineKeyboardButton(text="Ответить", callback_data=f"ticket:reply:{ticket_id}")],
+            [InlineKeyboardButton(text="Закрыть", callback_data=f"ticket:close:{ticket_id}")],
         ]
     )
 

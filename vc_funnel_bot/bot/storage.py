@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -10,7 +10,16 @@ from zoneinfo import ZoneInfo
 import aiosqlite
 
 from .analytics import calculate_temperature
-from .models import Event, Lead, Material, SourceInfo, WebinarRegistration
+from .models import (
+    Event,
+    Lead,
+    Material,
+    SourceInfo,
+    SupportTicket,
+    WebinarDelivery,
+    WebinarEventConfig,
+    WebinarRegistration,
+)
 
 
 LEAD_COLUMNS = [
@@ -253,6 +262,76 @@ class VcStorage:
                     event_id,
                     reminder_15m_sent_at
                 );
+
+            CREATE TABLE IF NOT EXISTS vc_funnel_webinar_events (
+                event_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                start_at TEXT,
+                timezone TEXT NOT NULL DEFAULT 'Europe/Moscow',
+                join_url TEXT,
+                replay_url TEXT,
+                phase TEXT NOT NULL DEFAULT 'draft',
+                event_version INTEGER NOT NULL DEFAULT 1,
+                support_manager_chat_id INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS vc_funnel_webinar_deliveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id TEXT NOT NULL,
+                event_version INTEGER NOT NULL,
+                telegram_user_id INTEGER NOT NULL,
+                telegram_chat_id INTEGER NOT NULL,
+                delivery_type TEXT NOT NULL,
+                scheduled_at TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                payload_json TEXT,
+                sent_at TEXT,
+                error_type TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(event_id, event_version, telegram_user_id, delivery_type)
+            );
+            CREATE INDEX IF NOT EXISTS idx_vc_webinar_deliveries_due
+                ON vc_funnel_webinar_deliveries (event_id, event_version, status, scheduled_at);
+
+            CREATE TABLE IF NOT EXISTS vc_funnel_support_tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                telegram_chat_id INTEGER NOT NULL,
+                username TEXT,
+                source TEXT NOT NULL DEFAULT 'unknown',
+                topic TEXT NOT NULL,
+                message TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'new',
+                assigned_admin_id INTEGER,
+                answer_text TEXT,
+                answered_by_admin_id INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                answered_at TEXT,
+                event_version INTEGER,
+                route_key TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_vc_support_tickets_status
+                ON vc_funnel_support_tickets (status, updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS vc_funnel_support_drafts (
+                user_id INTEGER PRIMARY KEY,
+                topic TEXT NOT NULL,
+                event_version INTEGER,
+                route_key TEXT,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS vc_funnel_support_admin_states (
+                admin_id INTEGER PRIMARY KEY,
+                ticket_id INTEGER NOT NULL,
+                chat_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             """
         )
         await self._ensure_columns(
@@ -270,6 +349,18 @@ class VcStorage:
                 "support_notified_at": "TEXT",
                 "last_bot_screen_message_id": "INTEGER",
                 "bot_screen_message_ids": "TEXT NOT NULL DEFAULT '[]'",
+            },
+        )
+        await self._ensure_columns(
+            "vc_funnel_webinar_registrations",
+            {"registered_event_version": "INTEGER NOT NULL DEFAULT 1"},
+        )
+        await self._ensure_columns(
+            "vc_funnel_materials",
+            {
+                "telegram_file_status": "TEXT NOT NULL DEFAULT 'unverified'",
+                "telegram_file_verified_at": "TEXT",
+                "telegram_file_error": "TEXT",
             },
         )
         await self.db.commit()
@@ -535,12 +626,6 @@ class VcStorage:
                 SET telegram_chat_id = ?,
                     username = ?,
                     first_name = ?,
-                    source = ?,
-                    start_payload = ?,
-                    campaign = ?,
-                    post = ?,
-                    selected_route = ?,
-                    bottleneck = ?,
                     registration_status = 'registered',
                     updated_at = ?
                 WHERE event_id = ? AND telegram_user_id = ?
@@ -549,12 +634,6 @@ class VcStorage:
                     telegram_chat_id,
                     username,
                     first_name,
-                    source,
-                    start_payload,
-                    campaign,
-                    post,
-                    selected_route,
-                    bottleneck,
                     now,
                     event_id,
                     telegram_user_id,
@@ -735,6 +814,383 @@ class VcStorage:
             joined / registered if registered else 0.0
         )
         return result
+
+    async def ensure_webinar_event(
+        self,
+        *,
+        event_id: str = "E02",
+        title: str,
+        start_at: str | None,
+        join_url: str | None = None,
+        replay_url: str | None = None,
+        support_manager_chat_id: int | None = None,
+    ) -> WebinarEventConfig:
+        """Create the one persisted E02 config once; later env changes never overwrite it."""
+        now = self.now()
+        await self.db.execute(
+            """
+            INSERT INTO vc_funnel_webinar_events (
+                event_id, title, start_at, timezone, join_url, replay_url, phase,
+                event_version, support_manager_chat_id, created_at, updated_at
+            ) VALUES (?, ?, ?, 'Europe/Moscow', ?, ?, 'draft', 1, ?, ?, ?)
+            ON CONFLICT(event_id) DO NOTHING
+            """,
+            (event_id, title, start_at, join_url, replay_url, support_manager_chat_id, now, now),
+        )
+        await self.db.commit()
+        config = await self.get_webinar_event(event_id)
+        if config is None:
+            raise RuntimeError("Webinar event configuration was not saved")
+        return config
+
+    async def get_webinar_event(self, event_id: str = "E02") -> WebinarEventConfig | None:
+        cursor = await self.db.execute(
+            """
+            SELECT event_id, title, start_at, timezone, join_url, replay_url, phase,
+                   event_version, support_manager_chat_id, created_at, updated_at
+            FROM vc_funnel_webinar_events WHERE event_id = ?
+            """,
+            (event_id,),
+        )
+        row = await cursor.fetchone()
+        return self._row_to_webinar_event(row) if row else None
+
+    async def update_webinar_event(
+        self,
+        event_id: str,
+        *,
+        title: str | None = None,
+        join_url: str | None | object = ...,
+        replay_url: str | None | object = ...,
+        phase: str | None = None,
+        support_manager_chat_id: int | None | object = ...,
+    ) -> WebinarEventConfig:
+        current = await self.get_webinar_event(event_id)
+        if current is None:
+            raise RuntimeError("Webinar event is not configured")
+        if phase is not None and phase not in {"draft", "registration", "live", "replay", "closed"}:
+            raise ValueError("Unsupported webinar phase")
+        fields: dict[str, Any] = {"updated_at": self.now()}
+        if title is not None:
+            fields["title"] = title.strip()
+        if join_url is not ...:
+            fields["join_url"] = join_url
+        if replay_url is not ...:
+            fields["replay_url"] = replay_url
+        if phase is not None:
+            fields["phase"] = phase
+        if support_manager_chat_id is not ...:
+            fields["support_manager_chat_id"] = support_manager_chat_id
+        assignments = ", ".join(f"{key} = ?" for key in fields)
+        await self.db.execute(
+            f"UPDATE vc_funnel_webinar_events SET {assignments} WHERE event_id = ?",
+            [self._sqlite_value(value) for value in fields.values()] + [event_id],
+        )
+        await self.db.commit()
+        return await self.get_webinar_event(event_id) or current
+
+    async def reschedule_webinar_event(
+        self,
+        event_id: str,
+        *,
+        start_at: datetime,
+        now: datetime | None = None,
+    ) -> WebinarEventConfig:
+        current = await self.get_webinar_event(event_id)
+        if current is None:
+            raise RuntimeError("Webinar event is not configured")
+        if start_at.tzinfo is None or start_at.utcoffset() is None:
+            raise ValueError("start_at must be timezone-aware")
+        start = start_at.astimezone(self.timezone)
+        current_now = (now or datetime.now(self.timezone)).astimezone(self.timezone)
+        if start <= current_now:
+            raise ValueError("New webinar start must be in the future")
+        new_version = current.event_version + 1
+        now_text = self.now()
+        await self.db.execute("BEGIN")
+        try:
+            await self.db.execute(
+                """
+                UPDATE vc_funnel_webinar_events
+                SET start_at = ?, phase = 'registration', event_version = ?, updated_at = ?
+                WHERE event_id = ?
+                """,
+                (start.isoformat(), new_version, now_text, event_id),
+            )
+            await self.db.execute(
+                """
+                UPDATE vc_funnel_webinar_deliveries
+                SET status = 'cancelled', updated_at = ?
+                WHERE event_id = ? AND event_version = ? AND status IN ('pending', 'sending')
+                """,
+                (now_text, event_id, current.event_version),
+            )
+            cursor = await self.db.execute(
+                """
+                SELECT telegram_user_id, telegram_chat_id
+                FROM vc_funnel_webinar_registrations
+                WHERE event_id = ? AND registration_status = 'registered'
+                """,
+                (event_id,),
+            )
+            for row in await cursor.fetchall():
+                await self._schedule_webinar_deliveries_unlocked(
+                    event_id=event_id,
+                    event_version=new_version,
+                    telegram_user_id=int(row["telegram_user_id"]),
+                    telegram_chat_id=int(row["telegram_chat_id"]),
+                    start_at=start,
+                    now=current_now,
+                )
+            await self.db.commit()
+        except Exception:
+            await self.db.rollback()
+            raise
+        config = await self.get_webinar_event(event_id)
+        if config is None:
+            raise RuntimeError("Webinar event was not rescheduled")
+        return config
+
+    async def schedule_webinar_deliveries(
+        self,
+        *,
+        event: WebinarEventConfig,
+        telegram_user_id: int,
+        telegram_chat_id: int,
+        now: datetime | None = None,
+    ) -> None:
+        if not event.start_at or event.phase not in {"registration", "live"}:
+            return
+        start = datetime.fromisoformat(event.start_at).astimezone(self.timezone)
+        current = (now or datetime.now(self.timezone)).astimezone(self.timezone)
+        await self._schedule_webinar_deliveries_unlocked(
+            event_id=event.event_id,
+            event_version=event.event_version,
+            telegram_user_id=telegram_user_id,
+            telegram_chat_id=telegram_chat_id,
+            start_at=start,
+            now=current,
+        )
+        await self.db.commit()
+
+    async def queue_reschedule_notices(self, event: WebinarEventConfig) -> int:
+        now = self.now()
+        cursor = await self.db.execute(
+            """SELECT telegram_user_id, telegram_chat_id
+                 FROM vc_funnel_webinar_registrations
+                 WHERE event_id = ? AND registration_status = 'registered'""",
+            (event.event_id,),
+        )
+        queued = 0
+        for row in await cursor.fetchall():
+            result = await self.db.execute(
+                """INSERT INTO vc_funnel_webinar_deliveries (
+                       event_id, event_version, telegram_user_id, telegram_chat_id,
+                       delivery_type, scheduled_at, status, created_at, updated_at
+                   ) VALUES (?, ?, ?, ?, 'reschedule_notice', ?, 'pending', ?, ?)
+                   ON CONFLICT(event_id, event_version, telegram_user_id, delivery_type) DO NOTHING""",
+                (event.event_id, event.event_version, int(row["telegram_user_id"]),
+                 int(row["telegram_chat_id"]), now, now, now),
+            )
+            queued += int(result.rowcount == 1)
+        await self.db.commit()
+        return queued
+
+    async def _schedule_webinar_deliveries_unlocked(
+        self,
+        *,
+        event_id: str,
+        event_version: int,
+        telegram_user_id: int,
+        telegram_chat_id: int,
+        start_at: datetime,
+        now: datetime,
+    ) -> None:
+        for delivery_type, scheduled_at in (
+            ("24h", start_at - timedelta(hours=24)),
+            ("3h", start_at - timedelta(hours=3)),
+            ("15m", start_at - timedelta(minutes=15)),
+            ("start", start_at),
+        ):
+            if scheduled_at <= now:
+                continue
+            timestamp = self.now()
+            await self.db.execute(
+                """
+                INSERT INTO vc_funnel_webinar_deliveries (
+                    event_id, event_version, telegram_user_id, telegram_chat_id,
+                    delivery_type, scheduled_at, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                ON CONFLICT(event_id, event_version, telegram_user_id, delivery_type) DO NOTHING
+                """,
+                (event_id, event_version, telegram_user_id, telegram_chat_id, delivery_type,
+                 scheduled_at.isoformat(), timestamp, timestamp),
+            )
+
+    async def list_due_webinar_deliveries(
+        self,
+        event: WebinarEventConfig,
+        *,
+        now: datetime | None = None,
+    ) -> list[WebinarDelivery]:
+        current = (now or datetime.now(self.timezone)).astimezone(self.timezone).isoformat()
+        cursor = await self.db.execute(
+            """
+            SELECT id, event_id, event_version, telegram_user_id, telegram_chat_id,
+                   delivery_type, scheduled_at, status, payload_json, sent_at,
+                   error_type, created_at, updated_at
+            FROM vc_funnel_webinar_deliveries
+            WHERE event_id = ? AND event_version = ? AND status = 'pending'
+              AND scheduled_at <= ?
+            ORDER BY scheduled_at, id
+            """,
+            (event.event_id, event.event_version, current),
+        )
+        return [self._row_to_webinar_delivery(row) for row in await cursor.fetchall()]
+
+    async def mark_webinar_delivery(
+        self, delivery_id: int, *, status: str, error_type: str | None = None
+    ) -> bool:
+        if status not in {"sending", "sent", "failed", "cancelled"}:
+            raise ValueError("Unsupported delivery status")
+        fields = {"status": status, "updated_at": self.now(), "error_type": error_type}
+        if status == "sent":
+            fields["sent_at"] = self.now()
+        allowed_from = "status = 'pending'" if status == "sending" else "status = 'sending'"
+        cursor = await self.db.execute(
+            f"UPDATE vc_funnel_webinar_deliveries SET status = ?, updated_at = ?, error_type = ?, sent_at = COALESCE(?, sent_at) WHERE id = ? AND {allowed_from}",
+            (fields["status"], fields["updated_at"], fields["error_type"], fields.get("sent_at"), delivery_id),
+        )
+        await self.db.commit()
+        return cursor.rowcount == 1
+
+    async def create_support_ticket(
+        self,
+        *,
+        user_id: int,
+        telegram_chat_id: int,
+        username: str | None,
+        source: str,
+        topic: str,
+        message: str,
+        event_version: int | None,
+        route_key: str | None,
+    ) -> SupportTicket:
+        now = self.now()
+        cursor = await self.db.execute(
+            """
+            INSERT INTO vc_funnel_support_tickets (
+                user_id, telegram_chat_id, username, source, topic, message,
+                status, created_at, updated_at, event_version, route_key
+            ) VALUES (?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?)
+            """,
+            (user_id, telegram_chat_id, username, source, topic, message.strip(), now, now, event_version, route_key),
+        )
+        await self.db.commit()
+        ticket = await self.get_support_ticket(int(cursor.lastrowid))
+        if ticket is None:
+            raise RuntimeError("Support ticket was not saved")
+        return ticket
+
+    async def get_support_ticket(self, ticket_id: int) -> SupportTicket | None:
+        cursor = await self.db.execute(
+            """SELECT id, user_id, telegram_chat_id, username, source, topic, message,
+                      status, assigned_admin_id, answer_text, answered_by_admin_id,
+                      created_at, updated_at, answered_at, event_version, route_key
+               FROM vc_funnel_support_tickets WHERE id = ?""",
+            (ticket_id,),
+        )
+        row = await cursor.fetchone()
+        return self._row_to_support_ticket(row) if row else None
+
+    async def list_support_tickets(self, *, status: str | None = None, limit: int = 20) -> list[SupportTicket]:
+        query = """SELECT id, user_id, telegram_chat_id, username, source, topic, message,
+                         status, assigned_admin_id, answer_text, answered_by_admin_id,
+                         created_at, updated_at, answered_at, event_version, route_key
+                    FROM vc_funnel_support_tickets"""
+        args: list[Any] = []
+        if status:
+            query += " WHERE status = ?"
+            args.append(status)
+        query += " ORDER BY id DESC LIMIT ?"
+        args.append(limit)
+        cursor = await self.db.execute(query, args)
+        return [self._row_to_support_ticket(row) for row in await cursor.fetchall()]
+
+    async def assign_support_ticket(self, ticket_id: int, admin_id: int) -> SupportTicket | None:
+        now = self.now()
+        await self.db.execute(
+            """
+            UPDATE vc_funnel_support_tickets
+            SET status = 'assigned', assigned_admin_id = ?, updated_at = ?
+            WHERE id = ? AND (status = 'new' OR (status = 'assigned' AND assigned_admin_id = ?))
+            """,
+            (admin_id, now, ticket_id, admin_id),
+        )
+        await self.db.commit()
+        return await self.get_support_ticket(ticket_id)
+
+    async def close_support_ticket(self, ticket_id: int) -> SupportTicket | None:
+        await self.db.execute(
+            "UPDATE vc_funnel_support_tickets SET status = 'closed', updated_at = ? WHERE id = ? AND status != 'closed'",
+            (self.now(), ticket_id),
+        )
+        await self.db.commit()
+        return await self.get_support_ticket(ticket_id)
+
+    async def answer_support_ticket(self, ticket_id: int, admin_id: int, answer: str) -> SupportTicket | None:
+        now = self.now()
+        await self.db.execute(
+            """
+            UPDATE vc_funnel_support_tickets
+            SET status = 'answered', assigned_admin_id = COALESCE(assigned_admin_id, ?),
+                answer_text = ?, answered_by_admin_id = ?, answered_at = ?, updated_at = ?
+            WHERE id = ? AND status IN ('new', 'assigned')
+            """,
+            (admin_id, answer.strip(), admin_id, now, now, ticket_id),
+        )
+        await self.db.commit()
+        return await self.get_support_ticket(ticket_id)
+
+    async def set_support_draft(self, user_id: int, topic: str, event_version: int | None, route_key: str | None) -> None:
+        now = self.now()
+        await self.db.execute(
+            """INSERT INTO vc_funnel_support_drafts (user_id, topic, event_version, route_key, updated_at)
+                 VALUES (?, ?, ?, ?, ?)
+                 ON CONFLICT(user_id) DO UPDATE SET topic = excluded.topic,
+                     event_version = excluded.event_version, route_key = excluded.route_key, updated_at = excluded.updated_at""",
+            (user_id, topic, event_version, route_key, now),
+        )
+        await self.db.commit()
+
+    async def pop_support_draft(self, user_id: int) -> tuple[str, int | None, str | None] | None:
+        cursor = await self.db.execute("SELECT topic, event_version, route_key FROM vc_funnel_support_drafts WHERE user_id = ?", (user_id,))
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        await self.db.execute("DELETE FROM vc_funnel_support_drafts WHERE user_id = ?", (user_id,))
+        await self.db.commit()
+        return str(row["topic"]), row["event_version"], row["route_key"]
+
+    async def set_admin_reply_state(self, admin_id: int, ticket_id: int, chat_id: int) -> None:
+        now = self.now()
+        await self.db.execute(
+            """INSERT INTO vc_funnel_support_admin_states (admin_id, ticket_id, chat_id, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?)
+                 ON CONFLICT(admin_id) DO UPDATE SET ticket_id = excluded.ticket_id,
+                    chat_id = excluded.chat_id, updated_at = excluded.updated_at""",
+            (admin_id, ticket_id, chat_id, now, now),
+        )
+        await self.db.commit()
+
+    async def pop_admin_reply_state(self, admin_id: int, chat_id: int) -> int | None:
+        cursor = await self.db.execute("SELECT ticket_id FROM vc_funnel_support_admin_states WHERE admin_id = ? AND chat_id = ?", (admin_id, chat_id))
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        await self.db.execute("DELETE FROM vc_funnel_support_admin_states WHERE admin_id = ?", (admin_id,))
+        await self.db.commit()
+        return int(row["ticket_id"])
 
     async def reset_lead_for_test(self, telegram_id: int) -> bool:
         async with self._lead_lock(telegram_id):
@@ -1219,7 +1675,8 @@ class VcStorage:
         cursor = await self.db.execute(
             """
             SELECT material_key, title, body, url, telegram_file_id, telegram_file_type,
-                   telegram_file_name, telegram_caption, is_active, created_at, updated_at
+                   telegram_file_name, telegram_caption, is_active, telegram_file_status,
+                   telegram_file_verified_at, telegram_file_error, created_at, updated_at
             FROM vc_funnel_materials
             WHERE material_key = ? AND is_active = 1
             """,
@@ -1232,8 +1689,9 @@ class VcStorage:
         cursor = await self.db.execute(
             """
             SELECT material_key, title, body, url, telegram_file_id,
-                   telegram_file_type, telegram_file_name, telegram_caption,
-                   is_active, created_at, updated_at
+                   telegram_file_type, telegram_file_name, telegram_caption, is_active,
+                   telegram_file_status, telegram_file_verified_at, telegram_file_error,
+                   created_at, updated_at
             FROM vc_funnel_materials
             WHERE material_key = ?
             """,
@@ -1246,7 +1704,8 @@ class VcStorage:
         cursor = await self.db.execute(
             """
             SELECT material_key, title, body, url, telegram_file_id, telegram_file_type,
-                   telegram_file_name, telegram_caption, is_active, created_at, updated_at
+                   telegram_file_name, telegram_caption, is_active, telegram_file_status,
+                   telegram_file_verified_at, telegram_file_error, created_at, updated_at
             FROM vc_funnel_materials
             ORDER BY material_key
             """
@@ -1270,9 +1729,10 @@ class VcStorage:
             """
             INSERT INTO vc_funnel_materials (
                 material_key, title, body, url, telegram_file_id, telegram_file_type,
-                telegram_file_name, telegram_caption, is_active, created_at, updated_at
+                telegram_file_name, telegram_caption, is_active, telegram_file_status,
+                created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
             ON CONFLICT(material_key) DO UPDATE SET
                 title = excluded.title,
                 body = excluded.body,
@@ -1281,6 +1741,9 @@ class VcStorage:
                 telegram_file_type = excluded.telegram_file_type,
                 telegram_file_name = excluded.telegram_file_name,
                 telegram_caption = excluded.telegram_caption,
+                telegram_file_status = excluded.telegram_file_status,
+                telegram_file_verified_at = NULL,
+                telegram_file_error = NULL,
                 is_active = 1,
                 updated_at = excluded.updated_at
             """,
@@ -1293,6 +1756,7 @@ class VcStorage:
                 telegram_file_type,
                 telegram_file_name,
                 telegram_caption,
+                "unverified" if telegram_file_id else "missing",
                 now,
                 now,
             ),
@@ -1307,6 +1771,24 @@ class VcStorage:
         await self.db.execute(
             "UPDATE vc_funnel_materials SET is_active = 0, updated_at = ? WHERE material_key = ?",
             (self.now(), material_key),
+        )
+        await self.db.commit()
+
+    async def update_material_file_validation(
+        self,
+        material_key: str,
+        *,
+        status: str,
+        error: str | None = None,
+    ) -> None:
+        if status not in {"ready", "missing", "invalid", "unverified"}:
+            raise ValueError("Unsupported material file status")
+        await self.db.execute(
+            """UPDATE vc_funnel_materials
+               SET telegram_file_status = ?, telegram_file_verified_at = ?,
+                   telegram_file_error = ?, updated_at = ?
+               WHERE material_key = ?""",
+            (status, self.now() if status in {"ready", "invalid"} else None, error, self.now(), material_key),
         )
         await self.db.commit()
 
@@ -1439,6 +1921,9 @@ class VcStorage:
             telegram_file_name=row["telegram_file_name"],
             telegram_caption=row["telegram_caption"],
             is_active=bool(row["is_active"]),
+            telegram_file_status=row["telegram_file_status"],
+            telegram_file_verified_at=row["telegram_file_verified_at"],
+            telegram_file_error=row["telegram_file_error"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -1469,4 +1954,59 @@ class VcStorage:
             replay_clicked_at=row["replay_clicked_at"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+        )
+
+    @staticmethod
+    def _row_to_webinar_event(row: aiosqlite.Row) -> WebinarEventConfig:
+        return WebinarEventConfig(
+            event_id=row["event_id"],
+            title=row["title"],
+            start_at=row["start_at"],
+            timezone=row["timezone"],
+            join_url=row["join_url"],
+            replay_url=row["replay_url"],
+            phase=row["phase"],
+            event_version=int(row["event_version"]),
+            support_manager_chat_id=row["support_manager_chat_id"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    @staticmethod
+    def _row_to_webinar_delivery(row: aiosqlite.Row) -> WebinarDelivery:
+        return WebinarDelivery(
+            id=int(row["id"]),
+            event_id=row["event_id"],
+            event_version=int(row["event_version"]),
+            telegram_user_id=int(row["telegram_user_id"]),
+            telegram_chat_id=int(row["telegram_chat_id"]),
+            delivery_type=row["delivery_type"],
+            scheduled_at=row["scheduled_at"],
+            status=row["status"],
+            payload_json=row["payload_json"],
+            sent_at=row["sent_at"],
+            error_type=row["error_type"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    @staticmethod
+    def _row_to_support_ticket(row: aiosqlite.Row) -> SupportTicket:
+        return SupportTicket(
+            id=int(row["id"]),
+            user_id=int(row["user_id"]),
+            telegram_chat_id=int(row["telegram_chat_id"]),
+            username=row["username"],
+            source=row["source"],
+            topic=row["topic"],
+            message=row["message"],
+            status=row["status"],
+            assigned_admin_id=row["assigned_admin_id"],
+            answer_text=row["answer_text"],
+            answered_by_admin_id=row["answered_by_admin_id"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            answered_at=row["answered_at"],
+            event_version=row["event_version"],
+            route_key=row["route_key"],
         )

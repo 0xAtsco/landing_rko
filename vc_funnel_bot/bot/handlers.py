@@ -8,7 +8,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from aiogram import Bot, F, Router
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import BotCommand, BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
@@ -51,6 +51,7 @@ from .keyboards import (
     contact_request_keyboard,
     hermes_business_cta_keyboard,
     hermes_playbook_keyboard,
+    hermes_playbook_subscription_keyboard,
     hermes_q1_keyboard,
     hermes_q2_general_keyboard,
     hermes_q2_setup_keyboard,
@@ -63,8 +64,11 @@ from .keyboards import (
     q2_keyboard,
     result_actions_keyboard,
     submitted_channel_keyboard,
+    support_ticket_keyboard,
+    support_topics_keyboard,
     unsafe_continue_keyboard,
     unknown_text_keyboard,
+    vc_main_menu_keyboard,
     vc_interest_keyboard,
     webinar_url_keyboard,
 )
@@ -84,6 +88,8 @@ from .messages import (
     HERMES_CONTEXT_TOO_SHORT_TEXT,
     HERMES_CHANNEL_REPLY,
     HERMES_PLAYBOOK_MISSING_TEXT,
+    HERMES_PLAYBOOK_SUBSCRIPTION_ERROR_TEXT,
+    HERMES_PLAYBOOK_SUBSCRIPTION_TEXT,
     HERMES_PLAYBOOK_TEXT,
     HERMES_SETUP_CONTEXT_PROMPT,
     HERMES_SUPPORT_PENDING_TEXT,
@@ -143,8 +149,10 @@ from .rendering import BotScreenRenderer
 from .safety import contains_unsafe_data, mask_sensitive as mask_sensitive_text
 from .source_parser import parse_start_payload, parse_text_trigger
 from .storage import VcStorage
+from .subscriptions import check_channel_subscription
 from .webinar import (
     google_calendar_url,
+    runtime_webinar_settings,
     selected_route,
     webinar_event_payload,
     webinar_join_is_available,
@@ -205,6 +213,7 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
     router = Router(name="vc_funnel")
     callback_locks: dict[int, asyncio.Lock] = {}
     material_wizards: dict[int, dict[str, object]] = {}
+    webinar_changes: dict[int, datetime] = {}
 
     def user_lock(telegram_id: int) -> asyncio.Lock:
         lock = callback_locks.get(telegram_id)
@@ -252,12 +261,22 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
     @router.message(Command("menu"))
     async def menu(message: Message, bot: Bot) -> None:
         lead = await ensure_lead_from_message(message, storage, parse_start_payload(None))
-        await show_hermes_start(
-            BotScreenRenderer(bot, storage, settings),
-            storage,
-            lead,
-            None,
+        await BotScreenRenderer(bot, storage, settings).render_screen(
+            lead=lead,
+            text="Главное меню. Материалы и эфир доступны в любое время.",
+            reply_markup=vc_main_menu_keyboard(),
+            mode="send_new",
         )
+
+    @router.message(Command("webinar"))
+    async def webinar_command(message: Message, bot: Bot) -> None:
+        lead = await ensure_lead_from_message(message, storage, parse_start_payload(None))
+        await render_webinar_card(BotScreenRenderer(bot, storage, settings), storage, settings, lead)
+
+    @router.message(Command("support"))
+    async def support_command(message: Message, bot: Bot) -> None:
+        lead = await ensure_lead_from_message(message, storage, parse_start_payload(None))
+        await route_callback(BotScreenRenderer(bot, storage, settings), storage, settings, lead, "support:start", None)
 
     @router.message(Command("materials"))
     async def materials_command(message: Message, bot: Bot) -> None:
@@ -310,6 +329,104 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             reply_markup=admin_keyboard(),
         )
 
+    @router.message(Command("webinar_status"))
+    async def webinar_status(message: Message) -> None:
+        if not await require_admin(message, settings):
+            return
+        await message.answer(await webinar_admin_text(storage, settings))
+
+    @router.message(Command("webinar_reschedule"))
+    async def webinar_reschedule(message: Message, command: CommandObject) -> None:
+        if not await require_admin(message, settings):
+            return
+        try:
+            start_at = datetime.strptime((command.args or "").strip(), "%d.%m.%Y %H:%M").replace(tzinfo=settings.timezone)
+        except ValueError:
+            await message.answer("Формат: /webinar_reschedule ДД.ММ.ГГГГ ЧЧ:ММ")
+            return
+        if start_at <= datetime.now(settings.timezone):
+            await message.answer("Нужна будущая дата по Москве.")
+            return
+        webinar_changes[message.from_user.id] = start_at  # type: ignore[index]
+        await message.answer(
+            f"Перенести эфир на {start_at.strftime('%d.%m.%Y %H:%M МСК')}? Регистрации сохранятся, старые будущие напоминания отменятся.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Подтвердить перенос", callback_data="admin:webinar:reschedule_confirm"),
+                InlineKeyboardButton(text="Отмена", callback_data="admin:webinar:cancel"),
+            ]]),
+        )
+
+    @router.message(Command("webinar_phase"))
+    async def webinar_phase_command(message: Message, command: CommandObject) -> None:
+        if not await require_admin(message, settings):
+            return
+        phase = (command.args or "").strip().lower()
+        if phase not in {"draft", "registration", "live", "replay", "closed"}:
+            await message.answer("Формат: /webinar_phase draft|registration|live|replay|closed")
+            return
+        event = await storage.update_webinar_event(settings.webinar_event_id or "E02", phase=phase)
+        await storage.add_event(message.from_user.id, "admin_webinar_phase_updated", {"phase": phase, "event_version": event.event_version})  # type: ignore[union-attr]
+        await message.answer(f"Режим E02: {event.phase}.")
+
+    @router.message(Command("webinar_join_url"))
+    async def webinar_join_url(message: Message, command: CommandObject) -> None:
+        if not await require_admin(message, settings):
+            return
+        raw_url = (command.args or "").strip()
+        event = await storage.update_webinar_event(settings.webinar_event_id or "E02", join_url=None if raw_url == "-" else raw_url)
+        await message.answer(f"Ссылка на эфир: {'очищена' if not event.join_url else 'сохранена'}.")
+
+    @router.message(Command("webinar_replay_url"))
+    async def webinar_replay_url(message: Message, command: CommandObject) -> None:
+        if not await require_admin(message, settings):
+            return
+        raw_url = (command.args or "").strip()
+        event = await storage.update_webinar_event(settings.webinar_event_id or "E02", replay_url=None if raw_url == "-" else raw_url)
+        await message.answer(f"Ссылка на запись: {'очищена' if not event.replay_url else 'сохранена'}.")
+
+    @router.message(Command("webinar_support_chat"))
+    async def webinar_support_chat(message: Message, command: CommandObject) -> None:
+        if not await require_admin(message, settings):
+            return
+        raw_chat_id = (command.args or "").strip()
+        if raw_chat_id != "-" and parse_int_arg(raw_chat_id) is None:
+            await message.answer("Формат: /webinar_support_chat <chat_id> или /webinar_support_chat -")
+            return
+        event = await storage.update_webinar_event(settings.webinar_event_id or "E02", support_manager_chat_id=None if raw_chat_id == "-" else int(raw_chat_id))
+        await message.answer(f"Чат поддержки: {'по списку админов' if event.support_manager_chat_id is None else event.support_manager_chat_id}.")
+
+    @router.message(Command("webinar_notice"))
+    async def webinar_notice(message: Message) -> None:
+        if not await require_admin(message, settings):
+            return
+        event = await storage.get_webinar_event(settings.webinar_event_id or "E02")
+        if event is None or not event.start_at:
+            await message.answer("Сначала укажите будущую дату эфира.")
+            return
+        await message.answer(
+            "Отправить всем зарегистрированным уведомление о текущей дате?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Отправить уведомление", callback_data="admin:webinar:notice_confirm")
+            ]]),
+        )
+
+    @router.message(Command("support_queue"))
+    async def support_queue(message: Message) -> None:
+        if not await require_admin(message, settings):
+            return
+        await message.answer(await support_queue_text(storage))
+
+    @router.message(Command("ticket"))
+    async def ticket_command(message: Message, command: CommandObject) -> None:
+        if not await require_admin(message, settings):
+            return
+        ticket_id = parse_int_arg(command.args)
+        ticket = await storage.get_support_ticket(ticket_id) if ticket_id else None
+        if ticket is None:
+            await message.answer("Формат: /ticket <номер>")
+            return
+        await message.answer(support_ticket_text(ticket), reply_markup=support_ticket_keyboard(ticket.id))
+
     @router.message(Command("links"))
     async def links(message: Message) -> None:
         if not await require_admin(message, settings):
@@ -351,6 +468,36 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
         if not await require_admin(message, settings):
             return
         await message.answer(await hermes_readiness_text(storage, settings))
+
+    @router.message(Command("material_verify"))
+    async def material_verify(message: Message, command: CommandObject, bot: Bot) -> None:
+        if not await require_admin(message, settings):
+            return
+        requested_key = (command.args or "").strip()
+        materials = await storage.list_materials()
+        if requested_key:
+            materials = [material for material in materials if material.material_key == requested_key]
+        if not materials:
+            await message.answer("Материал не найден.")
+            return
+        ready = missing = invalid = 0
+        for material in materials:
+            if not material.telegram_file_id:
+                await storage.update_material_file_validation(material.material_key, status="missing")
+                missing += 1
+                continue
+            try:
+                await bot.get_file(material.telegram_file_id)
+            except TelegramAPIError as exc:
+                await storage.update_material_file_validation(
+                    material.material_key, status="invalid", error=exc.__class__.__name__
+                )
+                invalid += 1
+            else:
+                await storage.update_material_file_validation(material.material_key, status="ready")
+                ready += 1
+        await storage.add_event(message.from_user.id, "admin_materials_verified", {"ready": ready, "missing": missing, "invalid": invalid})  # type: ignore[union-attr]
+        await message.answer(f"Проверка Telegram-файлов: готово {ready}, без файла {missing}, невалидно {invalid}.")
 
     @router.message(Command("material_add"))
     async def material_add(message: Message) -> None:
@@ -497,6 +644,30 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             await message.answer(
                 await webinar_admin_text(storage, settings)
             )
+        elif action == "support":
+            await message.answer(await support_queue_text(storage))
+        elif action == "webinar:reschedule_confirm":
+            start_at = webinar_changes.pop(callback.from_user.id, None)
+            if start_at is None:
+                await message.answer("Подтверждение устарело. Запустите /webinar_reschedule ещё раз.")
+                return
+            event = await storage.reschedule_webinar_event(
+                settings.webinar_event_id or "E02", start_at=start_at
+            )
+            queued = await storage.queue_reschedule_notices(event)
+            await storage.add_event(callback.from_user.id, "admin_webinar_rescheduled", {"event_id": event.event_id, "event_version": event.event_version, "start_at": event.start_at, "notices_queued": queued})
+            await message.answer(f"Эфир перенесён на {start_at.strftime('%d.%m.%Y %H:%M МСК')}. Версия события: {event.event_version}. Уведомлений в очереди: {queued}.")
+        elif action == "webinar:notice_confirm":
+            event = await storage.get_webinar_event(settings.webinar_event_id or "E02")
+            if event is None:
+                await message.answer("E02 не настроен.")
+                return
+            queued = await storage.queue_reschedule_notices(event)
+            await storage.add_event(callback.from_user.id, "admin_webinar_reschedule_notice_queued", {"event_id": event.event_id, "event_version": event.event_version, "queued": queued})
+            await message.answer(f"В очередь добавлено уведомлений: {queued}.")
+        elif action == "webinar:cancel":
+            webinar_changes.pop(callback.from_user.id, None)
+            await message.answer("Перенос отменён.")
         elif action == "preview":
             await message.answer("Напиши: /preview <payload>")
         elif action == "export":
@@ -506,6 +677,49 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
         elif action.startswith("events:"):
             telegram_id = parse_int_arg(action.removeprefix("events:"))
             await message.answer(events_text(await storage.list_recent_events(telegram_id, limit=30), telegram_id))
+
+    @router.callback_query(F.data.startswith("ticket:"))
+    async def ticket_callback(callback: CallbackQuery) -> None:
+        await ack_callback(callback)
+        if callback.from_user is None or callback.message is None or callback.data is None:
+            return
+        if not is_admin(callback.from_user.id, settings):
+            return
+        message = callback.message
+        if not isinstance(message, Message):
+            return
+        _, action, raw_ticket_id = callback.data.split(":", 2)
+        ticket_id = parse_int_arg(raw_ticket_id)
+        if ticket_id is None:
+            return
+        ticket = await storage.get_support_ticket(ticket_id)
+        if ticket is None:
+            await message.answer("Обращение не найдено.")
+            return
+        if action == "claim":
+            ticket = await storage.assign_support_ticket(ticket_id, callback.from_user.id)
+            if ticket is None or ticket.assigned_admin_id != callback.from_user.id:
+                await message.answer("Обращение уже взял другой администратор.")
+                return
+            await storage.add_event(ticket.user_id, "support_ticket_assigned", {"ticket_id": ticket_id})
+            await message.answer(f"Обращение #{ticket_id} взято в работу.")
+            return
+        if action == "reply":
+            if ticket.status == "closed":
+                await message.answer("Обращение закрыто.")
+                return
+            ticket = await storage.assign_support_ticket(ticket_id, callback.from_user.id) or ticket
+            if ticket.assigned_admin_id != callback.from_user.id:
+                await message.answer("Обращение уже взял другой администратор.")
+                return
+            await storage.set_admin_reply_state(callback.from_user.id, ticket_id, message.chat.id)
+            await message.answer(f"Напишите ответ для обращения #{ticket_id} одним сообщением.")
+            return
+        if action == "close":
+            ticket = await storage.close_support_ticket(ticket_id)
+            if ticket:
+                await storage.add_event(ticket.user_id, "support_ticket_closed", {"ticket_id": ticket_id})
+            await message.answer(f"Обращение #{ticket_id} закрыто.")
 
     @router.message(F.document | F.photo | F.video | F.animation)
     async def media_message(message: Message, bot: Bot) -> None:
@@ -529,7 +743,7 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             message,
         )
 
-    @router.callback_query(F.data.startswith("vc:") | F.data.startswith("hb:"))
+    @router.callback_query(F.data.startswith("vc:") | F.data.startswith("hb:") | F.data.startswith("support:"))
     async def bot_callback(callback: CallbackQuery, bot: Bot) -> None:
         if callback.from_user is None or callback.data is None:
             return
@@ -589,6 +803,28 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             if await handle_material_wizard_text(message, storage, material_wizards, text):
                 return
 
+        if is_admin(message.from_user.id, settings):
+            ticket_id = await storage.pop_admin_reply_state(message.from_user.id, message.chat.id)
+            if ticket_id is not None:
+                ticket = await storage.get_support_ticket(ticket_id)
+                if ticket is None or ticket.status == "closed":
+                    await message.answer("Обращение уже закрыто.")
+                    return
+                try:
+                    await bot.send_message(
+                        chat_id=ticket.telegram_chat_id,
+                        text=f"Ответ команды по обращению #{ticket.id}:\n\n{text}",
+                    )
+                except Exception as exc:
+                    logger.warning("Support ticket reply failed: %s", exc.__class__.__name__)
+                    await message.answer("Не получилось доставить ответ. Нажмите «Ответить» ещё раз.")
+                    return
+                answered = await storage.answer_support_ticket(ticket.id, message.from_user.id, text[:2400])
+                if answered:
+                    await storage.add_event(answered.user_id, "support_ticket_answered", {"ticket_id": answered.id})
+                await message.answer(f"Ответ по обращению #{ticket.id} отправлен.")
+                return
+
         lead = await storage.get_lead(message.from_user.id)
         if lead is None:
             lead = await storage.upsert_lead(
@@ -615,6 +851,32 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
 
         if contains_unsafe_data(text):
             await show_unsafe_warning(renderer, storage, lead)
+            return
+
+        support_draft = await storage.pop_support_draft(lead.telegram_id)
+        if support_draft is not None:
+            topic, event_version, route_key = support_draft
+            ticket = await storage.create_support_ticket(
+                user_id=lead.telegram_id,
+                telegram_chat_id=message.chat.id,
+                username=lead.username,
+                source=lead.source,
+                topic=topic,
+                message=text[:2400],
+                event_version=event_version,
+                route_key=route_key,
+            )
+            await storage.add_event(
+                lead.telegram_id,
+                "support_ticket_created",
+                {"ticket_id": ticket.id, "topic": topic, "event_version": str(event_version or "")},
+            )
+            await notify_ticket_team(bot, storage, settings, ticket)
+            await renderer.render_screen(
+                lead=lead,
+                text=f"Вопрос передан команде. Ответ придёт сюда.\n\nНомер обращения: {ticket.id}",
+                mode="send_new",
+            )
             return
 
         if lead.lead_status == "application_context_requested":
@@ -691,6 +953,37 @@ async def route_callback(
     data: str,
     source_message: Message | None,
 ) -> None:
+    settings = await runtime_webinar_settings(storage, settings)
+    if data == "support:start":
+        await renderer.render_screen(
+            lead=lead,
+            text="Что хотите уточнить?",
+            reply_markup=support_topics_keyboard(),
+            source_message=source_message,
+        )
+        return
+    if data.startswith("support:topic:"):
+        topic = data.rsplit(":", 1)[-1]
+        labels = {
+            "materials": "Как использовать материалы",
+            "route": "Как выбрать ветку",
+            "setup": "Установка Hermes",
+            "entry": "Проблема со входом на эфир",
+            "program": "Вопрос по программе",
+            "other": "Другое",
+        }
+        if topic not in labels:
+            return
+        event = await storage.get_webinar_event(settings.webinar_event_id or "E02")
+        await storage.set_support_draft(
+            lead.telegram_id, labels[topic], event.event_version if event else None, selected_route(lead)
+        )
+        await renderer.render_screen(
+            lead=lead,
+            text="Напишите вопрос одним сообщением. Команда ответит сюда, в этого бота.",
+            source_message=source_message,
+        )
+        return
     if data.startswith("hb:"):
         await route_hermes_callback(
             renderer,
@@ -700,6 +993,22 @@ async def route_callback(
             data,
             source_message,
         )
+        return
+
+    if data == "vc:menu:webinar":
+        await render_webinar_card(renderer, storage, settings, lead, source_message=source_message)
+        return
+    if data == "vc:menu:restart":
+        lead = await storage.start_main_route(lead.telegram_id)
+        await show_hermes_start(renderer, storage, lead, source_message)
+        return
+    if data == "vc:menu:materials":
+        if lead.pain and lead.segment:
+            await complete_hermes_route(
+                renderer, storage, settings, lead, hermes_track(lead.pain, lead.segment), source_message
+            )
+        else:
+            await show_hermes_start(renderer, storage, lead, source_message)
         return
 
     if is_terminal_lead(lead):
@@ -987,88 +1296,59 @@ async def route_hermes_callback(
         )
         return
 
-    if data == "hb:playbook":
-        material = await resolve_material_key(
+    if data in {"hb:playbook", "hb:playbook:check"}:
+        if settings.playbook_subscription_required:
+            check = await check_channel_subscription(
+                getattr(renderer, "bot", None),
+                chat_id=settings.private_channel_chat_id,
+                user_id=lead.telegram_id,
+            )
+            await storage.add_event(
+                lead.telegram_id,
+                "playbook_subscription_check",
+                {
+                    "allowed": check.allowed,
+                    "reason": check.reason,
+                    "retry": data == "hb:playbook:check",
+                },
+            )
+            if not check.allowed:
+                event_type = (
+                    "playbook_subscription_error"
+                    if check.reason in {"misconfigured", "telegram_error"}
+                    else "playbook_subscription_gate_shown"
+                )
+                await storage.add_event(
+                    lead.telegram_id,
+                    event_type,
+                    {"reason": check.reason},
+                )
+                await renderer.render_screen(
+                    lead=lead,
+                    text=(
+                        HERMES_PLAYBOOK_SUBSCRIPTION_ERROR_TEXT
+                        if event_type == "playbook_subscription_error"
+                        else HERMES_PLAYBOOK_SUBSCRIPTION_TEXT
+                    ),
+                    reply_markup=hermes_playbook_subscription_keyboard(
+                        settings.private_channel_invite_url
+                    ),
+                    source_message=source_message,
+                    mode="send_new",
+                )
+                return
+            await storage.add_event(
+                lead.telegram_id,
+                "playbook_subscription_verified",
+                {"status": check.reason},
+            )
+        await deliver_hermes_playbook(
+            renderer,
             storage,
             settings,
-            "hermes_full_playbook",
+            lead,
+            source_message,
         )
-        if not material.has_content or material.status in {
-            "missing",
-            "inactive",
-        }:
-            await storage.add_event(
-                lead.telegram_id,
-                "full_playbook_requested",
-                {"delivery_status": material.status},
-            )
-            await renderer.render_screen(
-                lead=lead,
-                text=HERMES_PLAYBOOK_MISSING_TEXT,
-                source_message=source_message,
-                mode="send_new",
-            )
-            if webinar_phase(settings) not in {
-                "personal_plan",
-                "disabled",
-            }:
-                await render_webinar_card(
-                    renderer,
-                    storage,
-                    settings,
-                    lead,
-                )
-            return
-        try:
-            await renderer.render_material(
-                lead=lead,
-                material=material,
-                text=material_text(
-                    material.title,
-                    material_body(material),
-                ),
-                source_message=source_message,
-                persistent=True,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Hermes playbook delivery failed: %s",
-                exc.__class__.__name__,
-            )
-            await storage.add_event(
-                lead.telegram_id,
-                "full_playbook_requested",
-                {"delivery_status": "failed"},
-            )
-            await renderer.render_screen(
-                lead=lead,
-                text=HERMES_PLAYBOOK_MISSING_TEXT,
-                source_message=source_message,
-                mode="send_new",
-            )
-            if webinar_phase(settings) not in {
-                "personal_plan",
-                "disabled",
-            }:
-                await render_webinar_card(
-                    renderer,
-                    storage,
-                    settings,
-                    lead,
-                )
-            return
-        await storage.add_event(
-            lead.telegram_id,
-            "full_playbook_requested",
-            {"delivery_status": "delivered"},
-        )
-        if webinar_phase(settings) not in {"personal_plan", "disabled"}:
-            await render_webinar_card(
-                renderer,
-                storage,
-                settings,
-                lead,
-            )
         return
 
     if data == "hb:channel":
@@ -1125,6 +1405,13 @@ async def route_hermes_callback(
             selected_route=selected_route(lead),
             bottleneck=lead.pain,
         )
+        event = await storage.get_webinar_event(settings.webinar_event_id)
+        if created and event is not None:
+            await storage.schedule_webinar_deliveries(
+                event=event,
+                telegram_user_id=lead.telegram_id,
+                telegram_chat_id=chat_id,
+            )
         await storage.add_event(
             lead.telegram_id,
             (
@@ -1390,6 +1677,66 @@ async def render_automatic_plan(
     )
 
 
+async def deliver_hermes_playbook(
+    renderer: BotScreenRenderer,
+    storage: VcStorage,
+    settings: Settings,
+    lead: Lead,
+    source_message: Message | None,
+) -> None:
+    material = await resolve_material_key(
+        storage,
+        settings,
+        "hermes_full_playbook",
+    )
+    if not material.has_content or material.status in {"missing", "inactive"}:
+        await storage.add_event(
+            lead.telegram_id,
+            "full_playbook_requested",
+            {"delivery_status": material.status},
+        )
+        await renderer.render_screen(
+            lead=lead,
+            text=HERMES_PLAYBOOK_MISSING_TEXT,
+            source_message=source_message,
+            mode="send_new",
+        )
+        await render_funnel_end(renderer, storage, settings, lead)
+        return
+    try:
+        await renderer.render_material(
+            lead=lead,
+            material=material,
+            text=material_text(material.title, material_body(material)),
+            source_message=source_message,
+            persistent=True,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Hermes playbook delivery failed: %s",
+            exc.__class__.__name__,
+        )
+        await storage.add_event(
+            lead.telegram_id,
+            "full_playbook_requested",
+            {"delivery_status": "failed"},
+        )
+        await renderer.render_screen(
+            lead=lead,
+            text=HERMES_PLAYBOOK_MISSING_TEXT,
+            source_message=source_message,
+            mode="send_new",
+        )
+        await render_funnel_end(renderer, storage, settings, lead)
+        return
+    await storage.add_event(
+        lead.telegram_id,
+        "full_playbook_requested",
+        {"delivery_status": "delivered"},
+    )
+    await render_funnel_end(renderer, storage, settings, lead)
+
+
 async def render_webinar_card(
     renderer: BotScreenRenderer,
     storage: VcStorage,
@@ -1398,23 +1745,29 @@ async def render_webinar_card(
     *,
     source_message: Message | None = None,
 ) -> None:
+    settings = await runtime_webinar_settings(storage, settings)
     phase = webinar_phase(settings)
     if phase in {"personal_plan", "disabled"}:
         return
+    title = settings.webinar_title or "Главный эфир"
+    schedule = (
+        settings.webinar_start_at.strftime("%d.%m в %H:%M МСК")
+        if settings.webinar_start_at
+        else "дату сообщим в этом боте"
+    )
     if phase == "registration":
-        text = HERMES_WEBINAR_CARD_TEXT
+        text = f"{title}\n\nКогда: {schedule}.\n\nЗапишитесь — напоминания придут сюда автоматически."
     elif phase == "live":
-        live_text = (
-            HERMES_WEBINAR_LIVE_TEXT
+        text = (
+            f"{title}\n\nЭфир уже идёт. Войдите по кнопке ниже."
             if settings.webinar_join_url
-            else HERMES_WEBINAR_JOIN_MISSING_TEXT
+            else f"{title}\n\nЭфир уже идёт. Ссылка появится здесь, как только команда её добавит."
         )
-        text = f"{HERMES_WEBINAR_CARD_TEXT}\n\n{live_text}"
     else:
         text = (
-            HERMES_WEBINAR_REPLAY_TEXT
+            f"{title}\n\nЗапись эфира готова."
             if settings.webinar_replay_url
-            else HERMES_WEBINAR_REPLAY_PENDING_TEXT
+            else f"{title}\n\nЗапись появится здесь после эфира."
         )
     registration = (
         await storage.get_webinar_registration(
@@ -1552,12 +1905,6 @@ async def complete_hermes_route(
         reply_markup=hermes_playbook_keyboard(),
         mode="send_new",
         persistent=True,
-    )
-    await render_funnel_end(
-        renderer,
-        storage,
-        settings,
-        lead,
     )
 
 
@@ -2109,6 +2456,42 @@ async def handle_support_media(
     )
 
 
+async def notify_ticket_team(
+    bot: Bot,
+    storage: VcStorage,
+    settings: Settings,
+    ticket,
+) -> None:
+    event = await storage.get_webinar_event(settings.webinar_event_id or "E02")
+    chat_ids = (
+        (event.support_manager_chat_id,)
+        if event and event.support_manager_chat_id is not None
+        else tuple(sorted(settings.admin_ids))
+    )
+    username = f"@{ticket.username}" if ticket.username else "без username"
+    card = f"""Новый вопрос VC #{ticket.id}
+
+Пользователь: {username} / {ticket.user_id}
+Источник: {ticket.source}
+Тема: {ticket.topic}
+Ветка: {ticket.route_key or '-'}
+
+Вопрос:
+{mask_sensitive(ticket.message)}"""
+    delivered = False
+    for chat_id in chat_ids:
+        try:
+            await bot.send_message(chat_id=chat_id, text=card, reply_markup=support_ticket_keyboard(ticket.id))
+            delivered = True
+        except Exception as exc:
+            logger.warning("Support ticket notification failed: %s", exc.__class__.__name__)
+    await storage.add_event(
+        ticket.user_id,
+        "support_ticket_notified" if delivered else "support_ticket_notification_failed",
+        {"ticket_id": ticket.id},
+    )
+
+
 def is_admin(telegram_id: int, settings: Settings) -> bool:
     return telegram_id in settings.admin_ids
 
@@ -2158,6 +2541,7 @@ def admin_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Лиды", callback_data="admin:leads")],
             [InlineKeyboardButton(text="Статистика", callback_data="admin:stats")],
             [InlineKeyboardButton(text="Вебинар E02", callback_data="admin:webinar")],
+            [InlineKeyboardButton(text="Обращения", callback_data="admin:support")],
             [InlineKeyboardButton(text="Материалы", callback_data="admin:materials")],
             [InlineKeyboardButton(text="Ссылки", callback_data="admin:links")],
         ]
@@ -2348,7 +2732,9 @@ async def admin_materials_text(storage: VcStorage, settings: Settings) -> str:
         material = sqlite_materials.get(key)
         fallback = MATERIAL_CATALOG.get(key)
         status = (
-            "загружен"
+            f"{material.telegram_file_status}"
+            if material and material.is_active and material.telegram_file_id
+            else "текст/ссылка"
             if material and material.is_active
             else "встроен"
             if fallback
@@ -2365,6 +2751,7 @@ async def admin_materials_text(storage: VcStorage, settings: Settings) -> str:
             f"\n{index}. {(material.title if material else fallback.title if fallback else key)}"
             f"\nКлюч: {key}"
             f"\nСтатус: {status}"
+            f"\nИсточник: {'Telegram file_id' if material and material.telegram_file_id else 'SQLite' if material else 'catalog'}"
         )
     return "\n".join(lines)
 
@@ -2496,14 +2883,43 @@ def stats_text(stats: dict) -> str:
 Запросы помощи с Hermes: {stats['support_requests']}"""
 
 
+def support_ticket_text(ticket) -> str:
+    username = f"@{ticket.username}" if ticket.username else "без username"
+    return f"""Обращение #{ticket.id}
+
+Статус: {ticket.status}
+Пользователь: {username} / {ticket.user_id}
+Источник: {ticket.source}
+Тема: {ticket.topic}
+Ветка: {ticket.route_key or '-'}
+Исполнитель: {ticket.assigned_admin_id or '-'}
+
+Вопрос:
+{mask_sensitive(ticket.message)}"""
+
+
+async def support_queue_text(storage: VcStorage) -> str:
+    tickets = await storage.list_support_tickets(limit=20)
+    if not tickets:
+        return "Обращений пока нет."
+    lines = ["Последние обращения:"]
+    for ticket in tickets:
+        username = f"@{ticket.username}" if ticket.username else str(ticket.user_id)
+        lines.append(f"#{ticket.id} · {ticket.status} · {ticket.topic} · {username}")
+    lines.append("\nОткрыть: /ticket <номер>")
+    return "\n".join(lines)
+
+
 async def webinar_admin_text(
     storage: VcStorage,
     settings: Settings,
 ) -> str:
-    event_id = settings.webinar_event_id or "не настроен"
-    phase = webinar_phase(settings)
-    if settings.webinar_event_id is None:
-        stats = {
+    event = await storage.get_webinar_event(settings.webinar_event_id or "E02")
+    runtime = await runtime_webinar_settings(storage, settings)
+    event_id = event.event_id if event else (settings.webinar_event_id or "не настроен")
+    phase = event.phase if event else webinar_phase(settings)
+    if event is None:
+        stats = await storage.webinar_stats(event_id) if settings.webinar_event_id else {
             "registrations": 0,
             "by_source": {},
             "by_route": {},
@@ -2517,7 +2933,7 @@ async def webinar_admin_text(
             "join_click_conversion": 0.0,
         }
     else:
-        stats = await storage.webinar_stats(settings.webinar_event_id)
+        stats = await storage.webinar_stats(event.event_id)
     funnel_stats = await storage.stats()
 
     def groups(values: dict[str, int]) -> str:
@@ -2528,8 +2944,11 @@ async def webinar_admin_text(
     return f"""Вебинар {event_id}
 
 Режим: {phase}
-Join URL настроен: {'да' if settings.webinar_join_url else 'нет'}
-Replay URL настроен: {'да' if settings.webinar_replay_url else 'нет'}
+Дата: {runtime.webinar_start_at.strftime('%d.%m.%Y %H:%M МСК') if runtime.webinar_start_at else 'не задана'}
+Версия события: {event.event_version if event else '-'}
+Join URL настроен: {'да' if event and event.join_url else 'нет'}
+Replay URL настроен: {'да' if event and event.replay_url else 'нет'}
+Чат поддержки: {event.support_manager_chat_id if event and event.support_manager_chat_id else 'список админов'}
 
 Уникальные старты: {funnel_stats['unique_starts']}
 Завершили роутер: {funnel_stats['router_completed']}

@@ -18,7 +18,7 @@ from .messages import (
 )
 from .models import WebinarRegistration
 from .storage import VcStorage
-from .webinar import webinar_is_configured
+from .webinar import runtime_webinar_settings, webinar_is_configured
 
 
 logger = logging.getLogger(__name__)
@@ -159,6 +159,64 @@ async def send_due_webinar_reminders(
     return sent
 
 
+def persisted_reminder_text(settings: Settings, delivery_type: str) -> str:
+    assert settings.webinar_start_at is not None
+    date = settings.webinar_start_at.strftime("%d.%m в %H:%M МСК")
+    if delivery_type == "24h":
+        return f"Завтра, {date}, — главный эфир.\n\nНапомним ещё за 3 часа и за 15 минут."
+    if delivery_type == "3h":
+        return f"До главного эфира осталось 3 часа.\n\nНачало: {date}."
+    if delivery_type == "15m":
+        return "Эфир начнётся через 15 минут. Нажмите кнопку ниже."
+    if delivery_type == "start":
+        return "Эфир начался. Подключайтесь сейчас."
+    if delivery_type == "reschedule_notice":
+        return f"Главный эфир перенесён.\n\nНовая дата: {date}.\n\nВаша регистрация сохранена, повторно нажимать ничего не нужно. Напоминания придут автоматически."
+    raise ValueError(f"Unknown persisted delivery type: {delivery_type}")
+
+
+async def send_due_persisted_webinar_deliveries(
+    bot: Bot,
+    storage: VcStorage,
+    settings: Settings,
+    *,
+    now: datetime | None = None,
+) -> int:
+    runtime = await runtime_webinar_settings(storage, settings)
+    event = await storage.get_webinar_event(runtime.webinar_event_id or "E02")
+    if event is None or runtime.funnel_end_mode == "disabled" or not webinar_is_configured(runtime):
+        return 0
+    current = now or datetime.now(runtime.webinar_timezone or settings.timezone)
+    if current.tzinfo is None or current.utcoffset() is None:
+        current = current.replace(tzinfo=runtime.webinar_timezone or settings.timezone)
+    if event.phase == "registration" and runtime.webinar_start_at and current >= runtime.webinar_start_at:
+        await storage.update_webinar_event(event.event_id, phase="live")
+        runtime = await runtime_webinar_settings(storage, settings)
+        event = await storage.get_webinar_event(event.event_id) or event
+    sent = 0
+    for delivery in await storage.list_due_webinar_deliveries(event, now=current):
+        if not await storage.mark_webinar_delivery(delivery.id, status="sending"):
+            continue
+        try:
+            reveal_join = delivery.delivery_type in {"15m", "start"} and bool(runtime.webinar_join_url)
+            await bot.send_message(
+                chat_id=delivery.telegram_chat_id,
+                text=persisted_reminder_text(runtime, delivery.delivery_type),
+                reply_markup=hermes_webinar_join_keyboard() if reveal_join else None,
+            )
+        except TelegramAPIError as exc:
+            await storage.mark_webinar_delivery(delivery.id, status="failed", error_type=exc.__class__.__name__)
+            continue
+        await storage.mark_webinar_delivery(delivery.id, status="sent")
+        await storage.add_event(
+            delivery.telegram_user_id,
+            "webinar_reminder_sent" if delivery.delivery_type in {"24h", "3h", "15m"} else f"webinar_{delivery.delivery_type}_sent",
+            {"event_id": delivery.event_id, "event_version": str(delivery.event_version), "reminder_type": delivery.delivery_type},
+        )
+        sent += 1
+    return sent
+
+
 async def run_webinar_reminder_worker(
     bot: Bot,
     storage: VcStorage,
@@ -167,7 +225,7 @@ async def run_webinar_reminder_worker(
 ) -> None:
     while not stop_event.is_set():
         try:
-            await send_due_webinar_reminders(bot, storage, settings)
+            await send_due_persisted_webinar_deliveries(bot, storage, settings)
         except Exception as exc:
             logger.warning(
                 "Webinar reminder worker iteration failed: %s",

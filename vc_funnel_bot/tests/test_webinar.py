@@ -378,7 +378,7 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(created)
         self.assertEqual(registration.registered_at, first_registered_at)
         self.assertEqual(registration.telegram_chat_id, 9999)
-        self.assertEqual(registration.selected_route, "deal")
+        self.assertEqual(registration.selected_route, "offer")
         self.assertIsNotNone(registration.reminder_24h_sent_at)
 
     async def test_webinar_flow_registers_once_with_attribution(self) -> None:
@@ -390,20 +390,17 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
         renderer = FakeRenderer()
         lead = await self.complete_business_route(lead, settings, renderer)
 
-        plans = [
-            screen
-            for screen in renderer.screens
-            if "план из трёх действий" in str(screen.get("text"))
-        ]
-        self.assertEqual(len(plans), 1)
-        self.assertEqual(
-            callback_data(renderer.screens[-1]),
-            [
-                "hb:webinar:register",
-                "hb:playbook",
-                "hb:materials",
-            ],
+        self.assertEqual(callback_data(renderer.screens[-1]), ["hb:playbook"])
+
+        await route_callback(
+            renderer,
+            self.storage,
+            settings,
+            lead,
+            "hb:playbook",
+            None,
         )
+        self.assertIn("hb:webinar:register", callback_data(renderer.screens[-1]))
 
         await route_callback(
             renderer,
@@ -522,12 +519,7 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
         lead = await self.create_lead()
         renderer = FakeRenderer()
         await self.complete_business_route(lead, settings, renderer)
-        self.assertTrue(
-            any(
-                "план из трёх действий" in str(screen.get("text"))
-                for screen in renderer.screens
-            )
-        )
+        self.assertEqual(callback_data(renderer.screens[-1]), ["hb:playbook"])
         self.assertFalse(
             any(
                 "hb:webinar:register" in callback_data(screen)
@@ -546,6 +538,16 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
         lead = await self.create_lead()
         renderer = FakeRenderer()
         lead = await self.complete_business_route(lead, settings, renderer)
+        self.assertEqual(callback_data(renderer.screens[-1]), ["hb:playbook"])
+
+        await route_callback(
+            renderer,
+            self.storage,
+            settings,
+            lead,
+            "hb:playbook",
+            None,
+        )
         self.assertEqual(callback_data(renderer.screens[-1]), ["hb:plan"])
 
         await route_callback(
@@ -569,6 +571,14 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
         lead = await self.create_lead()
         renderer = FakeRenderer()
         lead = await self.complete_business_route(lead, settings, renderer)
+        await route_callback(
+            renderer,
+            self.storage,
+            settings,
+            lead,
+            "hb:playbook",
+            None,
+        )
         self.assertEqual(
             callback_data(renderer.screens[-1])[0],
             "hb:webinar:register",
@@ -597,7 +607,7 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             callback_data(renderer.screens[-1])[0],
-            "hb:webinar:join",
+            "hb:playbook",
         )
 
     async def test_setup_help_precedes_webinar_card(self) -> None:
@@ -681,8 +691,16 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
         lead = await self.create_lead()
         renderer = FakeRenderer()
         await self.complete_business_route(lead, settings, renderer)
+        await route_callback(
+            renderer,
+            self.storage,
+            settings,
+            lead,
+            "hb:playbook",
+            None,
+        )
 
-        self.assertIn("Запись готовится", str(renderer.screens[-1]["text"]))
+        self.assertIn("Запись появится", str(renderer.screens[-1]["text"]))
         self.assertNotIn(
             "hb:webinar:replay",
             callback_data(renderer.screens[-1]),

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 from .config import Settings
 from .models import Lead
+from .storage import VcStorage
 
 
 WEBINAR_PHASES = {
@@ -137,3 +139,31 @@ def google_calendar_url(settings: Settings) -> str:
         }
     )
     return f"https://calendar.google.com/calendar/render?{query}"
+
+
+async def runtime_webinar_settings(storage: VcStorage, settings: Settings) -> Settings:
+    """Use the persisted E02 config after it has been initialized once."""
+    event = await storage.get_webinar_event(settings.webinar_event_id or "E02")
+    if event is None:
+        return settings
+    start = datetime.fromisoformat(event.start_at).astimezone(settings.timezone) if event.start_at else None
+    mode = {
+        "draft": "disabled",
+        "closed": "disabled",
+        "registration": "webinar",
+        "live": "webinar",
+        "replay": "replay",
+    }.get(event.phase, "disabled")
+    return replace(
+        settings,
+        funnel_end_mode=mode,
+        webinar_enabled=event.phase not in {"draft", "closed"},
+        webinar_event_id=event.event_id,
+        webinar_title=event.title,
+        webinar_start_at=start,
+        webinar_end_at=(start + timedelta(hours=1)) if start else None,
+        webinar_timezone_name=event.timezone,
+        webinar_timezone=settings.timezone,
+        webinar_join_url=event.join_url,
+        webinar_replay_url=event.replay_url,
+    )

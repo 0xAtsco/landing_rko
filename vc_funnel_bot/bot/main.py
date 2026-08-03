@@ -11,7 +11,6 @@ from .config import load_settings, resolve_sqlite_path
 from .handlers import create_router
 from .reminders import run_webinar_reminder_worker
 from .storage import VcStorage
-from .webinar import webinar_is_configured
 
 
 async def main() -> None:
@@ -24,6 +23,13 @@ async def main() -> None:
 
     storage = VcStorage(resolve_sqlite_path(settings), settings.timezone)
     await storage.connect()
+    await storage.ensure_webinar_event(
+        event_id=settings.webinar_event_id or "E02",
+        title=settings.webinar_title or "Как находить клиентов на РКО через ИИ-решения",
+        start_at=settings.webinar_start_at.isoformat() if settings.webinar_start_at else None,
+        join_url=settings.webinar_join_url,
+        replay_url=settings.webinar_replay_url,
+    )
 
     bot = Bot(token=settings.bot_token)
     if settings.set_bot_commands_on_start:
@@ -31,6 +37,8 @@ async def main() -> None:
             [
                 BotCommand(command="start", description="Главное меню"),
                 BotCommand(command="menu", description="Главное меню"),
+                BotCommand(command="webinar", description="Главный эфир"),
+                BotCommand(command="support", description="Задать вопрос команде"),
                 BotCommand(command="help", description="Помощь"),
             ]
         )
@@ -38,11 +46,7 @@ async def main() -> None:
     dispatcher.include_router(create_router(storage, settings))
     reminder_stop = asyncio.Event()
     reminder_task: asyncio.Task[None] | None = None
-    if (
-        settings.funnel_end_mode == "webinar"
-        and settings.webinar_enabled
-        and webinar_is_configured(settings)
-    ):
+    if settings.funnel_end_mode == "webinar" and settings.webinar_enabled:
         reminder_task = asyncio.create_task(
             run_webinar_reminder_worker(
                 bot,

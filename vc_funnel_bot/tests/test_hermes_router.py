@@ -344,7 +344,7 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
                 expected_button = (
                     ["hb:setup_help"]
                     if track.startswith("setup_")
-                    else ["hb:plan"]
+                    else ["hb:playbook"]
                 )
                 self.assertEqual(button_data(renderer.screens[-1]), expected_button)
 
@@ -749,7 +749,7 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
                 "hermes_audit_workbook",
             ],
         )
-        self.assertEqual(button_data(renderer.screens[-1]), ["hb:plan"])
+        self.assertEqual(button_data(renderer.screens[-1]), ["hb:playbook"])
         self.assertTrue(
             any(
                 button_data(screen) == ["hb:playbook"]
