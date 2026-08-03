@@ -51,6 +51,7 @@ from .keyboards import (
     contact_request_keyboard,
     hermes_business_cta_keyboard,
     hermes_playbook_keyboard,
+    hermes_playbook_subscription_keyboard,
     hermes_q1_keyboard,
     hermes_q2_general_keyboard,
     hermes_q2_setup_keyboard,
@@ -87,6 +88,8 @@ from .messages import (
     HERMES_CONTEXT_TOO_SHORT_TEXT,
     HERMES_CHANNEL_REPLY,
     HERMES_PLAYBOOK_MISSING_TEXT,
+    HERMES_PLAYBOOK_SUBSCRIPTION_ERROR_TEXT,
+    HERMES_PLAYBOOK_SUBSCRIPTION_TEXT,
     HERMES_PLAYBOOK_TEXT,
     HERMES_SETUP_CONTEXT_PROMPT,
     HERMES_SUPPORT_PENDING_TEXT,
@@ -146,6 +149,7 @@ from .rendering import BotScreenRenderer
 from .safety import contains_unsafe_data, mask_sensitive as mask_sensitive_text
 from .source_parser import parse_start_payload, parse_text_trigger
 from .storage import VcStorage
+from .subscriptions import check_channel_subscription
 from .webinar import (
     google_calendar_url,
     runtime_webinar_settings,
@@ -1292,64 +1296,59 @@ async def route_hermes_callback(
         )
         return
 
-    if data == "hb:playbook":
-        material = await resolve_material_key(
+    if data in {"hb:playbook", "hb:playbook:check"}:
+        if settings.playbook_subscription_required:
+            check = await check_channel_subscription(
+                getattr(renderer, "bot", None),
+                chat_id=settings.private_channel_chat_id,
+                user_id=lead.telegram_id,
+            )
+            await storage.add_event(
+                lead.telegram_id,
+                "playbook_subscription_check",
+                {
+                    "allowed": check.allowed,
+                    "reason": check.reason,
+                    "retry": data == "hb:playbook:check",
+                },
+            )
+            if not check.allowed:
+                event_type = (
+                    "playbook_subscription_error"
+                    if check.reason in {"misconfigured", "telegram_error"}
+                    else "playbook_subscription_gate_shown"
+                )
+                await storage.add_event(
+                    lead.telegram_id,
+                    event_type,
+                    {"reason": check.reason},
+                )
+                await renderer.render_screen(
+                    lead=lead,
+                    text=(
+                        HERMES_PLAYBOOK_SUBSCRIPTION_ERROR_TEXT
+                        if event_type == "playbook_subscription_error"
+                        else HERMES_PLAYBOOK_SUBSCRIPTION_TEXT
+                    ),
+                    reply_markup=hermes_playbook_subscription_keyboard(
+                        settings.private_channel_invite_url
+                    ),
+                    source_message=source_message,
+                    mode="send_new",
+                )
+                return
+            await storage.add_event(
+                lead.telegram_id,
+                "playbook_subscription_verified",
+                {"status": check.reason},
+            )
+        await deliver_hermes_playbook(
+            renderer,
             storage,
             settings,
-            "hermes_full_playbook",
+            lead,
+            source_message,
         )
-        if not material.has_content or material.status in {
-            "missing",
-            "inactive",
-        }:
-            await storage.add_event(
-                lead.telegram_id,
-                "full_playbook_requested",
-                {"delivery_status": material.status},
-            )
-            await renderer.render_screen(
-                lead=lead,
-                text=HERMES_PLAYBOOK_MISSING_TEXT,
-                source_message=source_message,
-                mode="send_new",
-            )
-            await render_funnel_end(renderer, storage, settings, lead)
-            return
-        try:
-            await renderer.render_material(
-                lead=lead,
-                material=material,
-                text=material_text(
-                    material.title,
-                    material_body(material),
-                ),
-                source_message=source_message,
-                persistent=True,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Hermes playbook delivery failed: %s",
-                exc.__class__.__name__,
-            )
-            await storage.add_event(
-                lead.telegram_id,
-                "full_playbook_requested",
-                {"delivery_status": "failed"},
-            )
-            await renderer.render_screen(
-                lead=lead,
-                text=HERMES_PLAYBOOK_MISSING_TEXT,
-                source_message=source_message,
-                mode="send_new",
-            )
-            await render_funnel_end(renderer, storage, settings, lead)
-            return
-        await storage.add_event(
-            lead.telegram_id,
-            "full_playbook_requested",
-            {"delivery_status": "delivered"},
-        )
-        await render_funnel_end(renderer, storage, settings, lead)
         return
 
     if data == "hb:channel":
@@ -1676,6 +1675,66 @@ async def render_automatic_plan(
         mode="send_new",
         persistent=True,
     )
+
+
+async def deliver_hermes_playbook(
+    renderer: BotScreenRenderer,
+    storage: VcStorage,
+    settings: Settings,
+    lead: Lead,
+    source_message: Message | None,
+) -> None:
+    material = await resolve_material_key(
+        storage,
+        settings,
+        "hermes_full_playbook",
+    )
+    if not material.has_content or material.status in {"missing", "inactive"}:
+        await storage.add_event(
+            lead.telegram_id,
+            "full_playbook_requested",
+            {"delivery_status": material.status},
+        )
+        await renderer.render_screen(
+            lead=lead,
+            text=HERMES_PLAYBOOK_MISSING_TEXT,
+            source_message=source_message,
+            mode="send_new",
+        )
+        await render_funnel_end(renderer, storage, settings, lead)
+        return
+    try:
+        await renderer.render_material(
+            lead=lead,
+            material=material,
+            text=material_text(material.title, material_body(material)),
+            source_message=source_message,
+            persistent=True,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Hermes playbook delivery failed: %s",
+            exc.__class__.__name__,
+        )
+        await storage.add_event(
+            lead.telegram_id,
+            "full_playbook_requested",
+            {"delivery_status": "failed"},
+        )
+        await renderer.render_screen(
+            lead=lead,
+            text=HERMES_PLAYBOOK_MISSING_TEXT,
+            source_message=source_message,
+            mode="send_new",
+        )
+        await render_funnel_end(renderer, storage, settings, lead)
+        return
+    await storage.add_event(
+        lead.telegram_id,
+        "full_playbook_requested",
+        {"delivery_status": "delivered"},
+    )
+    await render_funnel_end(renderer, storage, settings, lead)
 
 
 async def render_webinar_card(

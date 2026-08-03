@@ -245,6 +245,25 @@ def hermes_playbook_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def hermes_playbook_subscription_keyboard(
+    invite_url: str | None,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if invite_url:
+        rows.append(
+            [InlineKeyboardButton(text="Подписаться на канал", url=invite_url)]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="Проверить подписку",
+                callback_data="hb:playbook:check",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def hermes_business_cta_keyboard() -> InlineKeyboardMarkup:
     button = HERMES_FLOW_SPEC["business_cta"]
     return InlineKeyboardMarkup(

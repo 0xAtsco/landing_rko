@@ -31,6 +31,8 @@ class Settings:
     enable_text_triggers: bool
     enable_followups: bool
     debug: bool
+    private_channel_chat_id: int | None = None
+    playbook_subscription_required: bool = False
     sales_chat_ids: tuple[int, ...] = ()
     admin_ids: set[int] = field(default_factory=set)
     bot_username: str | None = None
@@ -214,6 +216,12 @@ def load_settings() -> Settings:
         bot_username=_optional_str("VC_BOT_USERNAME"),
         set_bot_commands_on_start=_bool_env("VC_SET_BOT_COMMANDS_ON_START", False),
         private_channel_invite_url=_optional_str("VC_PRIVATE_CHANNEL_INVITE_URL"),
+        private_channel_chat_id=(
+            _int_env("VC_PRIVATE_CHANNEL_CHAT_ID", 0) or None
+        ),
+        playbook_subscription_required=_bool_env(
+            "VC_PLAYBOOK_SUBSCRIPTION_REQUIRED", False
+        ),
         materials_title=(os.getenv("VC_MATERIALS_TITLE") or "Материалы к ролику Андрея").strip(),
         materials_url=_optional_str("VC_MATERIALS_URL"),
         youtube_materials_url=_optional_str("VC_YOUTUBE_MATERIALS_URL"),
