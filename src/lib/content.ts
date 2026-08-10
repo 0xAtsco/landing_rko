@@ -749,7 +749,7 @@ export const repairMoscowDemoContent = {
     subtitle: "Опишите задачу — уточним детали и подготовим расчёт",
     primaryCta: "Получить расчёт",
     secondaryCta: "Варианты интерьера",
-    image: "/artifacts/repair-moscow-demo/hero-interior.webp",
+    image: "/artifacts/repair-moscow-demo/hero-interior-v2.webp",
     imageAlt: "Светлый интерьер гостиной и кухни",
   },
   stats: [
@@ -779,19 +779,19 @@ export const repairMoscowDemoContent = {
   ],
   works: [
     {
-      image: "/artifacts/repair-moscow-demo/portfolio-1.webp",
+      image: "/artifacts/repair-moscow-demo/portfolio-1-v2.webp",
       alt: "Светлый интерьер квартиры",
       title: "Светлый интерьер",
       note: "Визуальный ориентир",
     },
     {
-      image: "/artifacts/repair-moscow-demo/portfolio-2.webp",
+      image: "/artifacts/repair-moscow-demo/portfolio-2-v2.webp",
       alt: "Кухня-гостиная",
       title: "Кухня-гостиная",
       note: "Визуальный ориентир",
     },
     {
-      image: "/artifacts/repair-moscow-demo/portfolio-3.webp",
+      image: "/artifacts/repair-moscow-demo/portfolio-3-v2.webp",
       alt: "Интерьер студии",
       title: "Интерьер студии",
       note: "Визуальный ориентир",
