@@ -8,7 +8,20 @@ export function Outcomes() {
   return (
     <SectionReveal id="outcomes" className="px-4 py-16 sm:px-6 sm:py-20">
       <div className="mx-auto max-w-6xl">
-        <SectionHeading {...formatSection.heading} className="mb-8" />
+        <SectionHeading {...formatSection.heading} className="mb-6" />
+        <div className="mb-6 rounded-xl border border-signal/20 bg-[var(--surface-2)]/84 p-4 shadow-[0_18px_70px_rgba(0,0,0,0.22),inset_0_1px_0_rgb(var(--signal-rgb)/0.06)] sm:p-5">
+          <p className="font-mono text-xs uppercase tracking-[0.16em] text-signal-bright">
+            {formatSection.conditionsTitle}
+          </p>
+          <ul className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-2">
+            {formatSection.conditions.map((condition) => (
+              <li key={condition} className="flex items-start gap-3 text-sm leading-6 text-[#d9eeee] sm:text-base sm:leading-7">
+                <CheckCircle2 className="mt-1 size-4 shrink-0 text-signal-bright" aria-hidden="true" />
+                <span>{condition}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
         <Accordion type="single" collapsible defaultValue="outcome-0" className="gap-3">
           {formatSection.items.map((item, index) => (
             <AccordionItem

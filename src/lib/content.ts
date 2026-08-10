@@ -528,6 +528,14 @@ export const formatSection = {
     description:
       "Короткий практический спринт: от настройки инструментов до рабочего продукта, который можно показать и докрутить.",
   },
+  conditionsTitle: "Общие условия",
+  conditions: [
+    "4 недели работы",
+    "Пожизненный доступ к урокам и кейсам",
+    "Месяц поддержки после курса",
+    "4 живых созвона — по одному в неделю",
+    "Постоянная поддержка куратора",
+  ],
   items: [
     {
       title: "Старт, настройка и первые идеи связок",
@@ -584,7 +592,12 @@ export const formatSection = {
       result: "Рабочий продукт и понимание, как использовать вайбкодинг дальше.",
     },
   ],
-} as const satisfies { heading: SectionCopy; items: readonly OutcomeItem[] };
+} as const satisfies {
+  heading: SectionCopy;
+  conditionsTitle: string;
+  conditions: readonly string[];
+  items: readonly OutcomeItem[];
+};
 
 export const audienceSection = {
   goodTitle: "Подходит",
