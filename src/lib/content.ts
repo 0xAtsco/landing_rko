@@ -725,3 +725,86 @@ export const finalCta = {
   title: "Собери первую связку с вайбкодингом сегодня",
   cta: "Войти в поток",
 } as const;
+
+export const repairMoscowDemoContent = {
+  brand: {
+    name: "Ремонт квартир",
+    tagline: "Москва и МО",
+  },
+  hero: {
+    title: "Ремонт квартир под ключ в Москве и МО",
+    subtitle: "Опишите задачу — уточним детали и подготовим расчёт",
+    primaryCta: "Получить расчёт",
+    secondaryCta: "Варианты интерьера",
+    image: "/artifacts/repair-moscow-demo/hero-interior.webp",
+    imageAlt: "Светлый интерьер гостиной и кухни",
+  },
+  stats: [
+    { icon: "message", value: "Заявка", label: "в Telegram" },
+    { icon: "clipboard", value: "Расчёт", label: "по параметрам" },
+    { icon: "workflow", value: "Диалог", label: "по вашей задаче" },
+  ],
+  services: [
+    {
+      id: "cosmetic",
+      icon: "paint",
+      title: "Косметический ремонт",
+      text: "Обсудим обновление интерьера и отделку",
+    },
+    {
+      id: "capital",
+      icon: "hammer",
+      title: "Капитальный ремонт",
+      text: "Подберём состав работ под вашу задачу",
+    },
+    {
+      id: "design",
+      icon: "design",
+      title: "Дизайн + ремонт",
+      text: "Согласуем проект и формат реализации",
+    },
+  ],
+  works: [
+    {
+      image: "/artifacts/repair-moscow-demo/portfolio-1.webp",
+      alt: "Светлый интерьер квартиры",
+      title: "Светлый интерьер",
+      note: "Визуальный ориентир",
+    },
+    {
+      image: "/artifacts/repair-moscow-demo/portfolio-2.webp",
+      alt: "Кухня-гостиная",
+      title: "Кухня-гостиная",
+      note: "Визуальный ориентир",
+    },
+    {
+      image: "/artifacts/repair-moscow-demo/portfolio-3.webp",
+      alt: "Интерьер студии",
+      title: "Интерьер студии",
+      note: "Визуальный ориентир",
+    },
+  ],
+  benefits: [
+    { icon: "cart", text: "Обсудим материалы" },
+    { icon: "camera", text: "Согласуем формат связи" },
+    { icon: "chart", text: "Определим этапы работ" },
+    { icon: "hardhat", text: "Уточним состав команды" },
+  ],
+  process: [
+    {
+      number: "01",
+      title: "Опишите задачу",
+      text: "Напишите площадь, район и желаемый формат ремонта.",
+    },
+    {
+      number: "02",
+      title: "Уточним детали",
+      text: "В Telegram можно задать вопросы и обсудить состав работ.",
+    },
+    {
+      number: "03",
+      title: "Получите расчёт",
+      text: "После уточнения параметров подготовим следующий шаг.",
+    },
+  ],
+} as const;
