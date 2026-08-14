@@ -48,6 +48,8 @@ from .keyboards import (
     channel_material_actions_keyboard,
     channel_result_actions_keyboard,
     direct_start_keyboard,
+    direct_webinar_confirmation_keyboard,
+    direct_webinar_registration_keyboard,
     contact_request_keyboard,
     hermes_business_cta_keyboard,
     hermes_playbook_keyboard,
@@ -94,15 +96,12 @@ from .messages import (
     HERMES_SETUP_CONTEXT_PROMPT,
     HERMES_SUPPORT_PENDING_TEXT,
     HERMES_SETUP_RECEIVED_TEXT,
-    HERMES_WEBINAR_ALREADY_REGISTERED_TEXT,
     HERMES_WEBINAR_CALENDAR_READY_TEXT,
-    HERMES_WEBINAR_CARD_TEXT,
     HERMES_WEBINAR_JOIN_MISSING_TEXT,
     HERMES_WEBINAR_JOIN_READY_TEXT,
     HERMES_WEBINAR_LIVE_REGISTERED_TEXT,
     HERMES_WEBINAR_LIVE_REGISTERED_NO_URL_TEXT,
     HERMES_WEBINAR_LIVE_TEXT,
-    HERMES_WEBINAR_REGISTERED_TEXT,
     HERMES_WEBINAR_REPLAY_PENDING_TEXT,
     HERMES_WEBINAR_REPLAY_READY_TEXT,
     HERMES_WEBINAR_REPLAY_TEXT,
@@ -157,6 +156,7 @@ from .webinar import (
     webinar_event_payload,
     webinar_join_is_available,
     webinar_phase,
+    webinar_registration_text,
 )
 
 
@@ -1096,6 +1096,22 @@ async def route_entry(
             },
         )
 
+    if entry_source.entry_mode == "webinar_registration":
+        phase = webinar_phase(await runtime_webinar_settings(storage, settings))
+        await storage.add_event(
+            lead.telegram_id,
+            "webinar_direct_entry_started",
+            webinar_event_payload(settings, lead, phase=phase),
+        )
+        await render_direct_webinar_entry(
+            renderer,
+            storage,
+            settings,
+            lead,
+            source_message=source_message,
+        )
+        return
+
     if entry_source.entry_mode == "hermes_bottleneck":
         await show_hermes_start(
             renderer,
@@ -1370,11 +1386,21 @@ async def route_hermes_callback(
     if data == "hb:webinar:register":
         phase = webinar_phase(settings)
         payload = webinar_event_payload(settings, lead, phase=phase)
+        entry_source = parse_start_payload(
+            lead.latest_start_payload or lead.raw_start_payload
+        )
+        direct_webinar = entry_source.entry_mode == "webinar_registration"
         await storage.add_event(
             lead.telegram_id,
             "webinar_registration_clicked",
             payload,
         )
+        if direct_webinar:
+            await storage.add_event(
+                lead.telegram_id,
+                "webinar_direct_registration_clicked",
+                payload,
+            )
         if (
             phase not in {"registration", "live"}
             or settings.webinar_event_id is None
@@ -1398,10 +1424,10 @@ async def route_hermes_callback(
             telegram_chat_id=chat_id,
             username=lead.username,
             first_name=lead.first_name,
-            source=lead.source,
-            start_payload=lead.raw_start_payload,
-            campaign=lead.campaign,
-            post=lead.post_id or lead.post_slug,
+            source=entry_source.source,
+            start_payload=entry_source.raw_start_payload,
+            campaign=entry_source.campaign,
+            post=entry_source.post_id or entry_source.post_slug,
             selected_route=selected_route(lead),
             bottleneck=lead.pain,
         )
@@ -1421,23 +1447,41 @@ async def route_hermes_callback(
             ),
             payload,
         )
+        if direct_webinar:
+            await storage.add_event(
+                lead.telegram_id,
+                (
+                    "webinar_direct_registered"
+                    if created
+                    else "webinar_direct_already_registered"
+                ),
+                payload,
+            )
         text = (
-            HERMES_WEBINAR_ALREADY_REGISTERED_TEXT
-            if not created
-            else (
+            (
                 HERMES_WEBINAR_LIVE_REGISTERED_TEXT
                 if settings.webinar_join_url
                 else HERMES_WEBINAR_LIVE_REGISTERED_NO_URL_TEXT
             )
             if phase == "live"
-            else HERMES_WEBINAR_REGISTERED_TEXT
+            else webinar_registration_text(
+                settings,
+                already_registered=not created,
+            )
         )
         await renderer.render_screen(
             lead=lead,
             text=text,
-            reply_markup=hermes_webinar_confirmation_keyboard(
-                phase,
-                join_available=bool(settings.webinar_join_url),
+            reply_markup=(
+                direct_webinar_confirmation_keyboard(
+                    phase,
+                    join_available=bool(settings.webinar_join_url),
+                )
+                if direct_webinar
+                else hermes_webinar_confirmation_keyboard(
+                    phase,
+                    join_available=bool(settings.webinar_join_url),
+                )
             ),
             source_message=source_message,
             mode="send_new",
@@ -1791,6 +1835,94 @@ async def render_webinar_card(
             join_available=bool(settings.webinar_join_url),
             replay_available=bool(settings.webinar_replay_url),
         ),
+        source_message=source_message,
+        mode="send_new",
+    )
+
+
+async def render_direct_webinar_entry(
+    renderer: BotScreenRenderer,
+    storage: VcStorage,
+    settings: Settings,
+    lead: Lead,
+    *,
+    source_message: Message | None = None,
+) -> None:
+    settings = await runtime_webinar_settings(storage, settings)
+    event = await storage.get_webinar_event(settings.webinar_event_id or "E02")
+    phase = webinar_phase(settings)
+    registration = (
+        await storage.get_webinar_registration(
+            settings.webinar_event_id,
+            lead.telegram_id,
+        )
+        if settings.webinar_event_id is not None
+        else None
+    )
+
+    if phase in {"registration", "live"} and registration is not None:
+        await storage.add_event(
+            lead.telegram_id,
+            "webinar_direct_already_registered",
+            webinar_event_payload(settings, lead, phase=phase),
+        )
+        text = (
+            HERMES_WEBINAR_LIVE_REGISTERED_TEXT
+            if phase == "live" and settings.webinar_join_url
+            else HERMES_WEBINAR_LIVE_REGISTERED_NO_URL_TEXT
+            if phase == "live"
+            else webinar_registration_text(settings, already_registered=True)
+        )
+        await renderer.render_screen(
+            lead=lead,
+            text=text,
+            reply_markup=direct_webinar_confirmation_keyboard(
+                phase,
+                join_available=bool(settings.webinar_join_url),
+            ),
+            source_message=source_message,
+            mode="send_new",
+        )
+        return
+
+    title = settings.webinar_title or "Главный эфир"
+    schedule = (
+        settings.webinar_start_at.strftime("%d.%m.%Y в %H:%M МСК")
+        if settings.webinar_start_at
+        else "дату сообщим в этом боте"
+    )
+    if phase == "registration":
+        text = (
+            f"{title}\n\n"
+            f"Когда: {schedule}.\n\n"
+            "После регистрации напоминания и ссылка на эфир придут сюда."
+        )
+        reply_markup = direct_webinar_registration_keyboard()
+    elif phase == "live":
+        text = f"{title}\n\nЭфир уже идёт. Зарегистрируйтесь, чтобы открыть трансляцию."
+        reply_markup = direct_webinar_registration_keyboard()
+    elif event is not None and event.phase == "replay":
+        text = (
+            f"{title}\n\nЗапись эфира готова."
+            if settings.webinar_replay_url
+            else f"{title}\n\nЭфир завершён. Запись готовится."
+        )
+        reply_markup = (
+            webinar_url_keyboard("Посмотреть запись", settings.webinar_replay_url)
+            if settings.webinar_replay_url
+            else None
+        )
+    else:
+        text = f"{title}\n\nРегистрация на эфир сейчас закрыта."
+        reply_markup = None
+
+    payload = webinar_event_payload(settings, lead, phase=phase)
+    await storage.add_event(lead.telegram_id, "webinar_card_shown", payload)
+    await storage.add_event(lead.telegram_id, "webinar_direct_card_shown", payload)
+    await renderer.render_screen(
+        lead=lead,
+        text=text,
+        reply_markup=reply_markup,
         source_message=source_message,
         mode="send_new",
     )
@@ -2935,6 +3067,10 @@ async def webinar_admin_text(
     else:
         stats = await storage.webinar_stats(event.event_id)
     funnel_stats = await storage.stats()
+    announcement = stats.get(
+        "e02_1608_announcement",
+        {"entries": 0, "cards": 0, "registrations": 0, "conversion": 0.0},
+    )
 
     def groups(values: dict[str, int]) -> str:
         if not values:
@@ -2966,7 +3102,13 @@ Replay URL настроен: {'да' if event and event.replay_url else 'нет'
 Клики на эфир: {stats['join_clicked']}
 
 Конверсия в регистрацию: {stats['registration_conversion']:.1%}
-Конверсия в клик на эфир: {stats['join_click_conversion']:.1%}"""
+Конверсия в клик на эфир: {stats['join_click_conversion']:.1%}
+
+Кампания e02_1608_announcement:
+Переходы: {announcement['entries']}
+Карточки: {announcement['cards']}
+Регистрации: {announcement['registrations']}
+Конверсия: {announcement['conversion']:.1%}"""
 
 
 async def send_leads_csv(message: Message, storage: VcStorage) -> None:

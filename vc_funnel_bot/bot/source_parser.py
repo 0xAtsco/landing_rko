@@ -272,6 +272,8 @@ def _source_from_catalog(raw: str | None, definition: PayloadDefinition) -> Sour
         cjm = "direct"
     elif definition.entry_mode == "hermes_bottleneck":
         cjm = "hermes_bottleneck"
+    elif definition.entry_mode == "webinar_registration":
+        cjm = "webinar_registration"
     else:
         cjm = "channel_diagnostic"
 

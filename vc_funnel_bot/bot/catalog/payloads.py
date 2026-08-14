@@ -19,6 +19,18 @@ class PayloadDefinition:
 
 
 PAYLOAD_CATALOG = {
+    "am_e02_register_1608": PayloadDefinition(
+        payload="am_e02_register_1608",
+        group="andrey_main",
+        title="Регистрация на эфир E02 16 августа",
+        entry_mode="webinar_registration",
+        post_id="e02_announcement_1608",
+        post_slug="e02_announcement_1608",
+        post_topic="анонс эфира E02 16 августа",
+        cta_type="webinar_register",
+        source="andrey_main",
+        campaign="e02_1608_announcement",
+    ),
     "youtube_hermes": PayloadDefinition(
         payload="youtube_hermes",
         group="youtube",
