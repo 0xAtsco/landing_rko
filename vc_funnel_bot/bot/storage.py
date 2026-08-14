@@ -813,6 +813,32 @@ class VcStorage:
         result["join_click_conversion"] = (
             joined / registered if registered else 0.0
         )
+        campaign = "e02_1608_announcement"
+        campaign_counts: dict[str, int] = {}
+        for event_type, result_key in (
+            ("webinar_direct_entry_started", "entries"),
+            ("webinar_direct_card_shown", "cards"),
+            ("webinar_direct_registered", "registrations"),
+        ):
+            count_row = await (
+                await self.db.execute(
+                    """
+                    SELECT COUNT(DISTINCT telegram_id) AS total
+                    FROM vc_funnel_events
+                    WHERE event_type = ?
+                      AND json_extract(event_payload_json, '$.event_id') = ?
+                      AND json_extract(event_payload_json, '$.campaign') = ?
+                    """,
+                    (event_type, event_id, campaign),
+                )
+            ).fetchone()
+            campaign_counts[result_key] = int(count_row["total"] or 0)
+        campaign_counts["conversion"] = (
+            campaign_counts["registrations"] / campaign_counts["cards"]
+            if campaign_counts["cards"]
+            else 0.0
+        )
+        result["e02_1608_announcement"] = campaign_counts
         return result
 
     async def ensure_webinar_event(
@@ -1306,6 +1332,7 @@ class VcStorage:
         )
         can_update_source = (
             not source_is_locked
+            and source.entry_mode != "webinar_registration"
             and (
                 bool(source.raw_start_payload)
                 or existing.cjm in {"direct", "unknown"}

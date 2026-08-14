@@ -36,6 +36,7 @@ CtaType = Literal[
     "route",
     "apply",
     "bottleneck_route",
+    "webinar_register",
     "unknown",
 ]
 Cjm = Literal[
@@ -48,6 +49,7 @@ Cjm = Literal[
     "channel_call",
     "channel_want_vc",
     "hermes_bottleneck",
+    "webinar_registration",
     "direct",
     "unknown",
 ]
@@ -64,6 +66,7 @@ EntryMode = Literal[
     "channel_want_vc",
     "returning_after_sales",
     "hermes_bottleneck",
+    "webinar_registration",
     "unknown_text",
     "unsafe_data",
 ]

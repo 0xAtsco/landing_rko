@@ -415,6 +415,49 @@ def hermes_webinar_confirmation_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def direct_webinar_registration_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Зарегистрироваться на эфир",
+                    callback_data="hb:webinar:register",
+                )
+            ]
+        ]
+    )
+
+
+def direct_webinar_confirmation_keyboard(
+    phase: str,
+    *,
+    join_available: bool = False,
+) -> InlineKeyboardMarkup | None:
+    if phase == "live" and join_available:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Войти в эфир",
+                        callback_data="hb:webinar:join",
+                    )
+                ]
+            ]
+        )
+    if phase == "registration":
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Добавить в календарь",
+                        callback_data="hb:webinar:calendar",
+                    )
+                ]
+            ]
+        )
+    return None
+
+
 def hermes_webinar_join_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[

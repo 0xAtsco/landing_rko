@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 
 from .config import Settings
 from .models import Lead
+from .source_parser import parse_start_payload
 from .storage import VcStorage
 
 
@@ -99,12 +100,15 @@ def webinar_event_payload(
     reminder_type: str | None = None,
     phase: str | None = None,
 ) -> dict[str, str | None]:
+    attribution = parse_start_payload(
+        lead.latest_start_payload or lead.raw_start_payload
+    )
     payload: dict[str, str | None] = {
         "event_id": settings.webinar_event_id,
-        "source": lead.source,
-        "start_payload": lead.raw_start_payload,
-        "campaign": lead.campaign,
-        "post": lead.post_id or lead.post_slug,
+        "source": attribution.source,
+        "start_payload": attribution.raw_start_payload,
+        "campaign": attribution.campaign,
+        "post": attribution.post_id or attribution.post_slug,
         "route": selected_route(lead),
         "bottleneck": lead.pain,
     }
@@ -113,6 +117,26 @@ def webinar_event_payload(
     if phase is not None:
         payload["phase"] = phase
     return payload
+
+
+def webinar_registration_text(
+    settings: Settings,
+    *,
+    already_registered: bool = False,
+) -> str:
+    title = settings.webinar_title or "Главный эфир"
+    schedule = (
+        settings.webinar_start_at.strftime("%d.%m.%Y в %H:%M МСК")
+        if settings.webinar_start_at
+        else "дату сообщим в этом боте"
+    )
+    status = "Вы уже зарегистрированы." if already_registered else "Вы зарегистрированы."
+    return (
+        f"{status}\n\n"
+        f"{title}\n"
+        f"Когда: {schedule}.\n\n"
+        "Перед началом я пришлю напоминание и ссылку сюда."
+    )
 
 
 def google_calendar_url(settings: Settings) -> str:

@@ -17,7 +17,7 @@ from bot.catalog.hermes import (
     hermes_personal_plan_text,
 )
 from bot.config import Settings, load_settings
-from bot.handlers import route_callback, webinar_admin_text
+from bot.handlers import route_callback, route_entry, webinar_admin_text
 from bot.reminders import (
     current_reminder_type,
     send_due_webinar_reminders,
@@ -105,6 +105,13 @@ def callback_data(screen: dict[str, object]) -> list[str | None]:
 
 
 class WebinarPureRulesTest(unittest.TestCase):
+    def test_direct_registration_payload_has_expected_attribution(self) -> None:
+        source = parse_start_payload("am_e02_register_1608")
+        self.assertEqual(source.source, "andrey_main")
+        self.assertEqual(source.campaign, "e02_1608_announcement")
+        self.assertEqual(source.post_id, "e02_announcement_1608")
+        self.assertEqual(source.entry_mode, "webinar_registration")
+
     def test_env_parser_requires_aware_webinar_datetimes(self) -> None:
         env = {
             "VC_BOT_TOKEN": "test-token",
@@ -442,9 +449,123 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
             1,
         )
         self.assertIn(
-            "уже записаны",
+            "уже зарегистрированы",
             str(renderer.screens[-1]["text"]),
         )
+
+    async def test_direct_entry_registers_with_last_touch_and_keeps_first_touch(self) -> None:
+        start = datetime(2026, 8, 16, 19, 0, tzinfo=MOSCOW)
+        settings = make_settings(start=start, end=start + timedelta(hours=1))
+        await self.storage.ensure_webinar_event(
+            event_id="E02",
+            title=settings.webinar_title or "Эфир E02",
+            start_at=start.isoformat(),
+        )
+        await self.storage.update_webinar_event("E02", phase="registration")
+        lead = await self.create_lead("youtube_hermes")
+        first_touch = (lead.source, lead.raw_start_payload, lead.campaign)
+        lead = await self.storage.upsert_lead(
+            telegram_id=lead.telegram_id,
+            username=lead.username,
+            first_name=lead.first_name,
+            source=parse_start_payload("am_e02_register_1608"),
+        )
+        renderer = FakeRenderer()
+
+        await route_entry(renderer, self.storage, settings, lead)
+
+        self.assertEqual(
+            callback_data(renderer.screens[-1]),
+            ["hb:webinar:register"],
+        )
+        self.assertIn("16.08.2026 в 19:00 МСК", str(renderer.screens[-1]["text"]))
+        self.assertEqual(
+            (lead.source, lead.raw_start_payload, lead.campaign),
+            first_touch,
+        )
+
+        await route_callback(
+            renderer,
+            self.storage,
+            settings,
+            lead,
+            "hb:webinar:register",
+            None,
+        )
+        registration = await self.storage.get_webinar_registration("E02", lead.telegram_id)
+        self.assertIsNotNone(registration)
+        self.assertEqual(registration.source, "andrey_main")
+        self.assertEqual(registration.start_payload, "am_e02_register_1608")
+        self.assertEqual(registration.campaign, "e02_1608_announcement")
+        self.assertEqual(registration.post, "e02_announcement_1608")
+        self.assertEqual(callback_data(renderer.screens[-1]), ["hb:webinar:calendar"])
+        self.assertNotIn("3 августа", str(renderer.screens[-1]["text"]))
+
+        deliveries = await (
+            await self.storage.db.execute(
+                "SELECT COUNT(*) AS total FROM vc_funnel_webinar_deliveries WHERE event_id = 'E02' AND telegram_user_id = ?",
+                (lead.telegram_id,),
+            )
+        ).fetchone()
+        self.assertEqual(int(deliveries["total"]), 4)
+
+        await route_callback(
+            renderer,
+            self.storage,
+            settings,
+            lead,
+            "hb:webinar:register",
+            None,
+        )
+        deliveries = await (
+            await self.storage.db.execute(
+                "SELECT COUNT(*) AS total FROM vc_funnel_webinar_deliveries WHERE event_id = 'E02' AND telegram_user_id = ?",
+                (lead.telegram_id,),
+            )
+        ).fetchone()
+        self.assertEqual(int(deliveries["total"]), 4)
+        self.assertIn("Вы уже зарегистрированы", str(renderer.screens[-1]["text"]))
+
+        stats = await self.storage.webinar_stats("E02")
+        campaign_stats = stats["e02_1608_announcement"]
+        self.assertEqual(campaign_stats["entries"], 1)
+        self.assertEqual(campaign_stats["cards"], 1)
+        self.assertEqual(campaign_stats["registrations"], 1)
+        self.assertEqual(campaign_stats["conversion"], 1.0)
+
+    async def test_direct_entry_existing_registration_and_closed_phase(self) -> None:
+        start = datetime(2026, 8, 16, 19, 0, tzinfo=MOSCOW)
+        settings = make_settings(start=start, end=start + timedelta(hours=1))
+        await self.storage.ensure_webinar_event(
+            event_id="E02",
+            title=settings.webinar_title or "Эфир E02",
+            start_at=start.isoformat(),
+        )
+        await self.storage.update_webinar_event("E02", phase="registration")
+        lead = await self.create_lead("am_e02_register_1608")
+        await self.storage.upsert_webinar_registration(
+            event_id="E02",
+            telegram_user_id=lead.telegram_id,
+            telegram_chat_id=lead.telegram_id,
+            username=lead.username,
+            first_name=lead.first_name,
+            source="andrey_main",
+            start_payload="am_e02_register_1608",
+            campaign="e02_1608_announcement",
+            post="e02_announcement_1608",
+            selected_route=None,
+            bottleneck=None,
+        )
+        renderer = FakeRenderer()
+        await route_entry(renderer, self.storage, settings, lead)
+        self.assertIn("Вы уже зарегистрированы", str(renderer.screens[-1]["text"]))
+        self.assertEqual(callback_data(renderer.screens[-1]), ["hb:webinar:calendar"])
+
+        await self.storage.update_webinar_event("E02", phase="closed")
+        unregistered = await self.create_lead("am_e02_register_1608")
+        await route_entry(renderer, self.storage, settings, unregistered)
+        self.assertIn("Регистрация на эфир сейчас закрыта", str(renderer.screens[-1]["text"]))
+        self.assertNotIn("hb:webinar:register", callback_data(renderer.screens[-1]))
 
     async def test_concurrent_registration_callbacks_create_one_row(self) -> None:
         settings = make_settings(
