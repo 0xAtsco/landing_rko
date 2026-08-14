@@ -79,10 +79,6 @@ HERMES_WEBINAR_REPLAY_TEXT = """Запись вебинара готова.
 
 HERMES_WEBINAR_REPLAY_PENDING_TEXT = """Эфир завершён. Запись готовится и появится здесь."""
 
-HERMES_WEBINAR_CALENDAR_READY_TEXT = """Событие подготовлено.
-
-Нажмите кнопку ниже, чтобы добавить его в Google Calendar."""
-
 HERMES_WEBINAR_JOIN_READY_TEXT = """Ссылка на прямой эфир готова.
 
 Нажмите кнопку ниже, чтобы войти."""

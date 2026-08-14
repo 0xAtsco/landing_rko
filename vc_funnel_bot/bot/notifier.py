@@ -8,6 +8,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 
 from .models import Lead
+from .admin_labels import source_label
 from .safety import mask_sensitive
 from .storage import VcStorage
 
@@ -68,18 +69,15 @@ def material_labels(keys: Iterable[str]) -> list[str]:
 
 
 def human_source_label(lead: Lead) -> str:
-    if lead.source == "youtube" or lead.source_type == "youtube":
-        return "YouTube"
-    if lead.source == "telegram" or lead.source_type in {"telegram", "channel"}:
-        return "Telegram"
-    return "direct"
+    value = lead.source if lead.source != "unknown" else lead.source_type
+    return source_label(value)
 
 
 def _user_block(lead: Lead) -> str:
     username = f"@{lead.username}" if lead.username else "нет"
     contact = lead.contact or (f"@{lead.username}" if lead.username else "нет")
     return f"""Имя: {lead.first_name or "нет"}
-Username: {username}
+Имя в Telegram: {username}
 Telegram ID: {lead.telegram_id}
 Контакт: {contact}"""
 
@@ -104,7 +102,7 @@ def build_sales_message(
 Текущая ситуация: {SITUATION_LABELS.get(lead.segment or "", lead.segment or "не указано")}
 Желаемый срок: {URGENCY_LABELS.get(lead.urgency or "", lead.urgency or "не указан")}
 Полученные материалы: {materials}
-Полный playbook открыт: {"да" if playbook_opened else "нет"}
+Полная инструкция открыта: {"да" if playbook_opened else "нет"}
 
 Контекст:
 {mask_sensitive(lead.application_context)}

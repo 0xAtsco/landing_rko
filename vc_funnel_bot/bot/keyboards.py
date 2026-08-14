@@ -394,15 +394,6 @@ def hermes_webinar_confirmation_keyboard(
                 )
             ]
         )
-    elif phase != "live":
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="Добавить в календарь",
-                    callback_data="hb:webinar:calendar",
-                )
-            ]
-        )
     materials = HERMES_FLOW_SPEC["materials_return_button"]
     rows.append(
         [
@@ -440,17 +431,6 @@ def direct_webinar_confirmation_keyboard(
                     InlineKeyboardButton(
                         text="Войти в эфир",
                         callback_data="hb:webinar:join",
-                    )
-                ]
-            ]
-        )
-    if phase == "registration":
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="Добавить в календарь",
-                        callback_data="hb:webinar:calendar",
                     )
                 ]
             ]

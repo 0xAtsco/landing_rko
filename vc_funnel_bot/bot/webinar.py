@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
-from urllib.parse import urlencode
+from datetime import datetime, timedelta
 
 from .config import Settings
 from .models import Lead
@@ -137,32 +136,6 @@ def webinar_registration_text(
         f"Когда: {schedule}.\n\n"
         "Перед началом я пришлю напоминание и ссылку сюда."
     )
-
-
-def google_calendar_url(settings: Settings) -> str:
-    if not webinar_is_configured(settings):
-        raise RuntimeError("Webinar calendar configuration is incomplete")
-    assert settings.webinar_start_at is not None
-    assert settings.webinar_end_at is not None
-    start_utc = settings.webinar_start_at.astimezone(timezone.utc)
-    end_utc = settings.webinar_end_at.astimezone(timezone.utc)
-    dates = (
-        f"{start_utc.strftime('%Y%m%dT%H%M%SZ')}/"
-        f"{end_utc.strftime('%Y%m%dT%H%M%SZ')}"
-    )
-    query = urlencode(
-        {
-            "action": "TEMPLATE",
-            "text": settings.webinar_title or "Вебинар",
-            "dates": dates,
-            "ctz": settings.webinar_timezone_name,
-            "details": (
-                "Живой разбор с Андреем. "
-                "Ссылка на эфир придёт в Telegram перед началом."
-            ),
-        }
-    )
-    return f"https://calendar.google.com/calendar/render?{query}"
 
 
 async def runtime_webinar_settings(storage: VcStorage, settings: Settings) -> Settings:
