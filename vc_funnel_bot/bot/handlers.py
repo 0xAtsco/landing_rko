@@ -13,6 +13,17 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import BotCommand, BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from .analytics import INTENT_OPTIONS, PAIN_OPTIONS, SEGMENT_OPTIONS, personal_result_text
+from .admin_labels import (
+    event_label,
+    groups_text,
+    intent_label,
+    lead_status_label,
+    material_status_label,
+    phase_label,
+    route_label,
+    source_label,
+    ticket_status_label,
+)
 from .catalog.hermes import (
     HERMES_APPLY_PROMPT,
     HERMES_BUNDLES,
@@ -96,7 +107,6 @@ from .messages import (
     HERMES_SETUP_CONTEXT_PROMPT,
     HERMES_SUPPORT_PENDING_TEXT,
     HERMES_SETUP_RECEIVED_TEXT,
-    HERMES_WEBINAR_CALENDAR_READY_TEXT,
     HERMES_WEBINAR_JOIN_MISSING_TEXT,
     HERMES_WEBINAR_JOIN_READY_TEXT,
     HERMES_WEBINAR_LIVE_REGISTERED_TEXT,
@@ -150,7 +160,6 @@ from .source_parser import parse_start_payload, parse_text_trigger
 from .storage import VcStorage
 from .subscriptions import check_channel_subscription
 from .webinar import (
-    google_calendar_url,
     runtime_webinar_settings,
     selected_route,
     webinar_event_payload,
@@ -325,7 +334,7 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             return
         await storage.add_event(message.from_user.id, "admin_opened")  # type: ignore[union-attr]
         await message.answer(
-            "Админ-панель VC Funnel Bot.\n\nЧто открыть?",
+            "Управление ботом.\n\nЧто открыть?",
             reply_markup=admin_keyboard(),
         )
 
@@ -362,11 +371,18 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             return
         phase = (command.args or "").strip().lower()
         if phase not in {"draft", "registration", "live", "replay", "closed"}:
-            await message.answer("Формат: /webinar_phase draft|registration|live|replay|closed")
+            await message.answer(
+                "Формат: /webinar_phase <служебный_код>\n\n"
+                "draft — подготовка\n"
+                "registration — регистрация открыта\n"
+                "live — эфир идёт\n"
+                "replay — доступна запись\n"
+                "closed — регистрация закрыта"
+            )
             return
         event = await storage.update_webinar_event(settings.webinar_event_id or "E02", phase=phase)
         await storage.add_event(message.from_user.id, "admin_webinar_phase_updated", {"phase": phase, "event_version": event.event_version})  # type: ignore[union-attr]
-        await message.answer(f"Режим E02: {event.phase}.")
+        await message.answer(f"Статус эфира E02: {phase_label(event.phase)}.")
 
     @router.message(Command("webinar_join_url"))
     async def webinar_join_url(message: Message, command: CommandObject) -> None:
@@ -497,14 +513,14 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
                 await storage.update_material_file_validation(material.material_key, status="ready")
                 ready += 1
         await storage.add_event(message.from_user.id, "admin_materials_verified", {"ready": ready, "missing": missing, "invalid": invalid})  # type: ignore[union-attr]
-        await message.answer(f"Проверка Telegram-файлов: готово {ready}, без файла {missing}, невалидно {invalid}.")
+        await message.answer(f"Проверка файлов Telegram: готово {ready}, без файла {missing}, недоступно {invalid}.")
 
     @router.message(Command("material_add"))
     async def material_add(message: Message) -> None:
         if not await require_admin(message, settings):
             return
         material_wizards[message.from_user.id] = {"step": "key", "data": {}}  # type: ignore[union-attr]
-        await message.answer("Введи material_key.\n\nНапример:\nandrey_video_0704\nagent_lost_leads")
+        await message.answer("Введите служебный код материала.\n\nНапример:\nandrey_video_0704\nagent_lost_leads")
 
     @router.message(Command("material_set_url"))
     async def material_set_url(message: Message, command: CommandObject) -> None:
@@ -517,7 +533,7 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
         existing = await storage.get_material(parts[0])
         await storage.upsert_material(material_key=parts[0], title=existing.title if existing else parts[0], body=existing.body if existing else None, url=parts[1])
         await storage.add_event(message.from_user.id, "admin_material_updated", {"material_key": parts[0]})  # type: ignore[union-attr]
-        await message.answer(f"URL сохранён для {parts[0]}.")
+        await message.answer(f"Ссылка сохранена для материала {parts[0]}.")
 
     @router.message(Command("material_bind"))
     async def material_bind(message: Message, command: CommandObject) -> None:
@@ -529,7 +545,7 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             return
         await storage.bind_material(normalize_payload(parts[0]) or parts[0], parts[1])
         await storage.add_event(message.from_user.id, "admin_material_bound", {"payload": parts[0], "material_key": parts[1]})  # type: ignore[union-attr]
-        await message.answer(f"Payload {parts[0]} привязан к {parts[1]}.")
+        await message.answer(f"Ссылка с кодом {parts[0]} привязана к материалу {parts[1]}.")
 
     @router.message(Command("material_unbind"))
     async def material_unbind(message: Message, command: CommandObject) -> None:
@@ -538,7 +554,7 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
         payload = (command.args or "").strip()
         await storage.unbind_material(normalize_payload(payload) or payload)
         await storage.add_event(message.from_user.id, "admin_material_unbound", {"payload": payload})  # type: ignore[union-attr]
-        await message.answer(f"Payload {payload} отвязан.")
+        await message.answer(f"Ссылка с кодом {payload} отвязана от материала.")
 
     @router.message(Command("material_delete"))
     async def material_delete(message: Message, command: CommandObject) -> None:
@@ -574,7 +590,7 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
         telegram_id = parse_int_arg(command.args)
         lead = await storage.get_lead(telegram_id) if telegram_id else None
         if lead is None:
-            await message.answer("Lead не найден.")
+            await message.answer("Пользователь не найден.")
             return
         await storage.add_event(message.from_user.id, "admin_lead_opened", {"telegram_id": telegram_id})  # type: ignore[union-attr]
         delivered, playbook_opened = await storage.delivery_details(
@@ -619,7 +635,7 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             await message.answer("Формат: /admin_reset <telegram_id>")
             return
         await storage.admin_reset_lead(telegram_id, message.from_user.id)  # type: ignore[union-attr]
-        await message.answer(f"Lead {telegram_id} сброшен.")
+        await message.answer(f"Данные пользователя {telegram_id} сброшены.")
 
     @router.callback_query(F.data.startswith("admin:"))
     async def admin_callback(callback: CallbackQuery) -> None:
@@ -669,7 +685,7 @@ def create_router(storage: VcStorage, settings: Settings) -> Router:
             webinar_changes.pop(callback.from_user.id, None)
             await message.answer("Перенос отменён.")
         elif action == "preview":
-            await message.answer("Напиши: /preview <payload>")
+            await message.answer("Напишите: /preview <служебный_код>")
         elif action == "export":
             await send_leads_csv(message, storage)
         elif action == "material_add_hint":
@@ -1492,10 +1508,30 @@ async def route_hermes_callback(
         phase = webinar_phase(settings)
         await storage.add_event(
             lead.telegram_id,
-            "webinar_calendar_clicked",
+            "webinar_calendar_legacy_clicked",
             webinar_event_payload(settings, lead, phase=phase),
         )
-        if phase not in {"registration", "live"}:
+        entry_source = parse_start_payload(
+            lead.latest_start_payload or lead.raw_start_payload
+        )
+        if entry_source.entry_mode == "webinar_registration":
+            await render_direct_webinar_entry(
+                renderer,
+                storage,
+                settings,
+                lead,
+                source_message=source_message,
+            )
+            return
+        registration = (
+            await storage.get_webinar_registration(
+                settings.webinar_event_id,
+                lead.telegram_id,
+            )
+            if settings.webinar_event_id is not None
+            else None
+        )
+        if phase not in {"registration", "live"} or registration is None:
             await render_webinar_card(
                 renderer,
                 storage,
@@ -1506,10 +1542,19 @@ async def route_hermes_callback(
             return
         await renderer.render_screen(
             lead=lead,
-            text=HERMES_WEBINAR_CALENDAR_READY_TEXT,
-            reply_markup=webinar_url_keyboard(
-                "Открыть Google Calendar",
-                google_calendar_url(settings),
+            text=(
+                HERMES_WEBINAR_LIVE_REGISTERED_TEXT
+                if phase == "live" and settings.webinar_join_url
+                else HERMES_WEBINAR_LIVE_REGISTERED_NO_URL_TEXT
+                if phase == "live"
+                else webinar_registration_text(
+                    settings,
+                    already_registered=True,
+                )
+            ),
+            reply_markup=hermes_webinar_confirmation_keyboard(
+                phase,
+                join_available=bool(settings.webinar_join_url),
             ),
             source_message=source_message,
             mode="send_new",
@@ -2600,13 +2645,13 @@ async def notify_ticket_team(
         if event and event.support_manager_chat_id is not None
         else tuple(sorted(settings.admin_ids))
     )
-    username = f"@{ticket.username}" if ticket.username else "без username"
+    username = f"@{ticket.username}" if ticket.username else "без имени в Telegram"
     card = f"""Новый вопрос VC #{ticket.id}
 
 Пользователь: {username} / {ticket.user_id}
-Источник: {ticket.source}
+Источник: {source_label(ticket.source)}
 Тема: {ticket.topic}
-Ветка: {ticket.route_key or '-'}
+Маршрут: {route_label(ticket.route_key)}
 
 Вопрос:
 {mask_sensitive(ticket.message)}"""
@@ -2670,10 +2715,10 @@ async def render_material_or_screen(
 def admin_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Лиды", callback_data="admin:leads")],
-            [InlineKeyboardButton(text="Статистика", callback_data="admin:stats")],
-            [InlineKeyboardButton(text="Вебинар E02", callback_data="admin:webinar")],
-            [InlineKeyboardButton(text="Обращения", callback_data="admin:support")],
+            [InlineKeyboardButton(text="Пользователи", callback_data="admin:leads")],
+            [InlineKeyboardButton(text="Показатели", callback_data="admin:stats")],
+            [InlineKeyboardButton(text="Эфир E02", callback_data="admin:webinar")],
+            [InlineKeyboardButton(text="Вопросы", callback_data="admin:support")],
             [InlineKeyboardButton(text="Материалы", callback_data="admin:materials")],
             [InlineKeyboardButton(text="Ссылки", callback_data="admin:links")],
         ]
@@ -2693,13 +2738,13 @@ def admin_materials_keyboard() -> InlineKeyboardMarkup:
 def admin_preview_keyboard(payload: str) -> InlineKeyboardMarkup | None:
     if not payload:
         return None
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Deep links", callback_data="admin:links")]])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Ссылки", callback_data="admin:links")]])
 
 
 def admin_leads_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Статистика", callback_data="admin:stats")]
+            [InlineKeyboardButton(text="Показатели", callback_data="admin:stats")]
         ]
     )
 
@@ -2707,7 +2752,7 @@ def admin_leads_keyboard() -> InlineKeyboardMarkup:
 def admin_lead_keyboard(telegram_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Назад к лидам", callback_data="admin:leads")]
+            [InlineKeyboardButton(text="Назад к пользователям", callback_data="admin:leads")]
         ]
     )
 
@@ -2725,19 +2770,15 @@ def rko_bridge_keyboard() -> InlineKeyboardMarkup:
 
 def link_for(settings: Settings, payload: str) -> str:
     if not settings.bot_username:
-        return "VC_BOT_USERNAME не задан."
+        return "Имя бота не настроено."
     return f"https://t.me/{settings.bot_username.lstrip('@')}?start={payload}"
 
 
 def public_source(lead: Lead) -> str:
-    if lead.source == "youtube" or lead.source_type == "youtube":
-        return "YouTube"
-    if lead.source in {"telegram", "andrey_main", "channel"} or lead.source_type in {
-        "telegram",
-        "channel",
-    }:
-        return "Telegram"
-    return "direct"
+    value = lead.source
+    if value == "unknown":
+        value = lead.source_type
+    return source_label(value)
 
 
 async def material_status(storage: VcStorage, settings: Settings, payload: str) -> str:
@@ -2766,16 +2807,16 @@ async def admin_links_text(storage: VcStorage, settings: Settings) -> str:
 
 def testlink_text(settings: Settings, payload: str) -> str:
     if not payload:
-        return "Формат: /testlink <payload>"
-    prefix = f"Payload: {payload}\n"
+        return "Формат: /testlink <служебный_код>"
+    prefix = f"Служебный код: {payload}\n"
     if normalize_payload(payload) not in PAYLOAD_CATALOG:
-        prefix += "Payload не найден в каталоге. Всё равно ссылка:\n"
-    return prefix + f"Link: {link_for(settings, payload)}"
+        prefix += "Код не найден в каталоге. Ссылка всё равно сформирована:\n"
+    return prefix + f"Ссылка: {link_for(settings, payload)}"
 
 
 async def admin_preview_text(storage: VcStorage, settings: Settings, payload: str) -> str:
     if not payload:
-        return "Формат: /preview <payload>"
+        return "Формат: /preview <служебный_код>"
     source = parse_start_payload(payload)
     definition = PAYLOAD_CATALOG.get(normalize_payload(payload) or "")
     material = await resolve_material(storage, settings, payload=payload)
@@ -2787,41 +2828,41 @@ async def admin_preview_text(storage: VcStorage, settings: Settings, payload: st
             HERMES_MATERIAL_KEYS,
         )
         loaded = sum(status == "loaded" for status in readiness.values())
-        return f"""Preview payload
+        return f"""Предпросмотр ссылки
 
-Payload: {payload}
-Entry mode: {source.entry_mode}
-Group: {definition.group if definition else 'unknown'}
-Source: {source.source}
-Entry surface: {source.entry_surface}
-Post id: {source.post_id}
-Post slug: {source.post_slug}
-CTA type: {source.cta_type}
-Bundle readiness: {loaded}/{len(HERMES_MATERIAL_KEYS)}
+Служебный код: {payload}
+Способ входа: {source.entry_mode}
+Группа: {definition.group if definition else 'не определена'}
+Источник: {source_label(source.source)}
+Место входа: {source.entry_surface}
+Код публикации: {source.post_id}
+Название публикации: {source.post_slug}
+Действие кнопки: {source.cta_type}
+Материалы готовы: {loaded}/{len(HERMES_MATERIAL_KEYS)}
 
-First screen:
+Первый экран:
 {text}
 
-Buttons:
+Кнопки:
 {buttons}"""
-    return f"""Preview payload
+    return f"""Предпросмотр ссылки
 
-Payload: {payload}
-Entry mode: {source.entry_mode}
-Group: {definition.group if definition else 'unknown'}
-Source: {source.source}
-Entry surface: {source.entry_surface}
-Post id: {source.post_id}
-Post slug: {source.post_slug}
-CTA type: {source.cta_type}
-Material key: {material.material_key or 'нет'}
-Material status: {material.status if material.has_content else 'missing'}
-Attachment: {material.telegram_file_type or 'нет'}
+Служебный код: {payload}
+Способ входа: {source.entry_mode}
+Группа: {definition.group if definition else 'не определена'}
+Источник: {source_label(source.source)}
+Место входа: {source.entry_surface}
+Код публикации: {source.post_id}
+Название публикации: {source.post_slug}
+Действие кнопки: {source.cta_type}
+Код материала: {material.material_key or 'нет'}
+Состояние материала: {material_status_label(material.status if material.has_content else 'missing')}
+Вложение: {material.telegram_file_type or 'нет'}
 
-First screen:
+Первый экран:
 {text}
 
-Buttons:
+Кнопки:
 {buttons}"""
 
 
@@ -2864,7 +2905,7 @@ async def admin_materials_text(storage: VcStorage, settings: Settings) -> str:
         material = sqlite_materials.get(key)
         fallback = MATERIAL_CATALOG.get(key)
         status = (
-            f"{material.telegram_file_status}"
+            material_status_label(material.telegram_file_status)
             if material and material.is_active and material.telegram_file_id
             else "текст/ссылка"
             if material and material.is_active
@@ -2881,9 +2922,9 @@ async def admin_materials_text(storage: VcStorage, settings: Settings) -> str:
         )
         lines.append(
             f"\n{index}. {(material.title if material else fallback.title if fallback else key)}"
-            f"\nКлюч: {key}"
+            f"\nСлужебный код: {key}"
             f"\nСтатус: {status}"
-            f"\nИсточник: {'Telegram file_id' if material and material.telegram_file_id else 'SQLite' if material else 'catalog'}"
+            f"\nХранение: {'файл Telegram' if material and material.telegram_file_id else 'база бота' if material else 'встроенный каталог'}"
         )
     return "\n".join(lines)
 
@@ -2899,21 +2940,21 @@ async def hermes_readiness_text(
     )
     loaded = sum(status == "loaded" for status in readiness.values())
     lines = [
-        f"Hermes readiness: {loaded}/{len(HERMES_MATERIAL_KEYS)}",
+        f"Готовность материалов Hermes: {loaded}/{len(HERMES_MATERIAL_KEYS)}",
         "",
-        "Materials:",
+        "Материалы:",
     ]
     lines.extend(
-        f"- {material_key}: {readiness[material_key]}"
+        f"- {MATERIAL_CATALOG[material_key].title}: {material_status_label(readiness[material_key])}"
         for material_key in HERMES_MATERIAL_KEYS
     )
-    lines.append("\nBundles:")
+    lines.append("\nНаборы по маршрутам:")
     for track, material_keys in HERMES_BUNDLES.items():
         ready = sum(
             readiness[material_key] == "loaded"
             for material_key in material_keys
         )
-        lines.append(f"- {track}: {ready}/{len(material_keys)} ready")
+        lines.append(f"- {route_label(track)}: готово {ready}/{len(material_keys)}")
     return "\n".join(lines)
 
 
@@ -2922,21 +2963,23 @@ def _fallback_url(settings: Settings, name: str | None) -> str | None:
 
 
 def format_material_preview(material) -> str:
-    return f"""Material key: {material.material_key}
-Title: {material.title}
-Body: {material.body or 'нет'}
-URL: {material.url or 'нет'}
-File: {material.telegram_file_type or 'нет'} {material.telegram_file_name or ''}
-Active: {'yes' if material.is_active else 'no'}"""
+    return f"""Материал
+
+Служебный код: {material.material_key}
+Название: {material.title}
+Текст: {material.body or 'нет'}
+Ссылка: {material.url or 'нет'}
+Файл: {material.telegram_file_type or 'нет'} {material.telegram_file_name or ''}
+Включён: {'да' if material.is_active else 'нет'}"""
 
 
 async def leads_text(storage: VcStorage) -> str:
     leads = await storage.list_recent_leads(limit=20)
     if not leads:
-        return "Лиды\n\nПока пусто."
-    lines = ["Лиды"]
+        return "Пользователи\n\nПока пусто."
+    lines = ["Пользователи"]
     for index, lead in enumerate(leads, start=1):
-        username = f"@{lead.username}" if lead.username else "без username"
+        username = f"@{lead.username}" if lead.username else "без имени в Telegram"
         name = lead.first_name or "Без имени"
         bottleneck = BOTTLENECK_LABELS.get(
             lead.pain or "",
@@ -2946,8 +2989,8 @@ async def leads_text(storage: VcStorage) -> str:
             f"\n{index}. {lead.updated_at[:16]} — {name} / {username}"
             f"\nИсточник: {public_source(lead)}"
             f"\nУзкое звено: {bottleneck}"
-            f"\nСтатус: {lead.lead_status}"
-            f"\nКарточка: /lead {lead.telegram_id}"
+            f"\nСтатус: {lead_status_label(lead.lead_status)}"
+            f"\nПодробнее: /lead {lead.telegram_id}"
         )
     return "\n".join(lines)
 
@@ -2966,23 +3009,23 @@ def lead_card_text(
     materials = ", ".join(
         material_labels(delivered_materials or [])
     ) or "нет"
-    return f"""Лид {lead.telegram_id}
+    return f"""Пользователь {lead.telegram_id}
 
 Имя: {lead.first_name or 'нет'}
-Username: {username}
+Имя в Telegram: {username}
 Контакт: {lead.contact or username}
 Источник: {public_source(lead)}
 Узкое звено: {BOTTLENECK_LABELS.get(lead.pain or '', lead.pain or 'не выбрано')}
 Ситуация: {SITUATION_LABELS.get(lead.segment or '', lead.segment or 'не выбрана')}
 Срок: {URGENCY_LABELS.get(lead.urgency or '', lead.urgency or 'не выбран')}
-Намерение: {lead.intent or 'не указано'}
-Статус: {lead.lead_status}
+Намерение: {intent_label(lead.intent)}
+Статус: {lead_status_label(lead.lead_status)}
 
 Контекст:
 {mask_sensitive(lead.application_context)}
 
 Материалы: {materials}
-Полная инструкция открыта: {'да' if playbook_opened else 'нет'}
+Открыл полную инструкцию: {'да' if playbook_opened else 'нет'}
 
 Создан: {lead.created_at}
 Обновлён: {lead.updated_at}
@@ -2990,24 +3033,28 @@ Username: {username}
 
 
 def events_text(events, telegram_id: int | None) -> str:
-    title = f"Events for {telegram_id}" if telegram_id else "Последние события"
+    title = f"Действия пользователя {telegram_id}" if telegram_id else "Последние действия"
     if not events:
         return f"{title}\n\nПока пусто."
     lines = [title]
     for event in events:
         payload = event.event_payload
         safe_payload = {key: mask_sensitive(str(value)) for key, value in payload.items()}
-        lines.append(f"\n{event.created_at} {event.event_type}\npayload: {safe_payload}")
+        lines.append(
+            f"\n{event.created_at} — {event_label(event.event_type)}"
+            f"\nСлужебный код: {event.event_type}"
+            f"\nСлужебные данные: {safe_payload}"
+        )
     return "\n".join(lines)
 
 
 def stats_text(stats: dict) -> str:
-    return f"""Статистика
+    return f"""Показатели бота
 
-Старты всего: {stats['starts_total']}
-Старты YouTube: {stats['starts_youtube']}
-Старты Telegram: {stats['starts_telegram']}
-Завершили 2 вопроса: {stats['questions_completed']}
+Начали пользоваться ботом: {stats['starts_total']}
+Пришли из YouTube: {stats['starts_youtube']}
+Пришли из Telegram: {stats['starts_telegram']}
+Ответили на два вопроса: {stats['questions_completed']}
 Получили набор материалов: {stats['bundle_delivered']}
 Открыли полную инструкцию: {stats['playbook_opened']}
 Начали заявку: {stats['applications_started']}
@@ -3016,14 +3063,14 @@ def stats_text(stats: dict) -> str:
 
 
 def support_ticket_text(ticket) -> str:
-    username = f"@{ticket.username}" if ticket.username else "без username"
+    username = f"@{ticket.username}" if ticket.username else "без имени в Telegram"
     return f"""Обращение #{ticket.id}
 
-Статус: {ticket.status}
+Статус: {ticket_status_label(ticket.status)}
 Пользователь: {username} / {ticket.user_id}
 Источник: {ticket.source}
 Тема: {ticket.topic}
-Ветка: {ticket.route_key or '-'}
+Маршрут: {route_label(ticket.route_key)}
 Исполнитель: {ticket.assigned_admin_id or '-'}
 
 Вопрос:
@@ -3037,7 +3084,10 @@ async def support_queue_text(storage: VcStorage) -> str:
     lines = ["Последние обращения:"]
     for ticket in tickets:
         username = f"@{ticket.username}" if ticket.username else str(ticket.user_id)
-        lines.append(f"#{ticket.id} · {ticket.status} · {ticket.topic} · {username}")
+        lines.append(
+            f"#{ticket.id} · {ticket_status_label(ticket.status)} · "
+            f"{ticket.topic} · {username}"
+        )
     lines.append("\nОткрыть: /ticket <номер>")
     return "\n".join(lines)
 
@@ -3072,43 +3122,37 @@ async def webinar_admin_text(
         {"entries": 0, "cards": 0, "registrations": 0, "conversion": 0.0},
     )
 
-    def groups(values: dict[str, int]) -> str:
-        if not values:
-            return "нет"
-        return ", ".join(f"{key}: {value}" for key, value in values.items())
+    return f"""Эфир {event_id}
 
-    return f"""Вебинар {event_id}
-
-Режим: {phase}
+Статус: {phase_label(phase)}
 Дата: {runtime.webinar_start_at.strftime('%d.%m.%Y %H:%M МСК') if runtime.webinar_start_at else 'не задана'}
-Версия события: {event.event_version if event else '-'}
-Join URL настроен: {'да' if event and event.join_url else 'нет'}
-Replay URL настроен: {'да' if event and event.replay_url else 'нет'}
-Чат поддержки: {event.support_manager_chat_id if event and event.support_manager_chat_id else 'список админов'}
+Версия настроек: {event.event_version if event else '-'}
+Ссылка на эфир: {'настроена' if event and event.join_url else 'не настроена'}
+Ссылка на запись: {'настроена' if event and event.replay_url else 'не настроена'}
+Вопросы получает: {event.support_manager_chat_id if event and event.support_manager_chat_id else 'список администраторов'}
 
-Уникальные старты: {funnel_stats['unique_starts']}
-Завершили роутер: {funnel_stats['router_completed']}
-Получили bundle: {funnel_stats['bundle_delivered']}
-Карточку увидели: {stats['webinar_card_shown']}
-Зарегистрировались: {stats['webinar_registered']}
+Начали пользоваться ботом: {funnel_stats['unique_starts']}
+Ответили на вопросы: {funnel_stats['router_completed']}
+Получили материалы: {funnel_stats['bundle_delivered']}
+Увидели приглашение на эфир: {stats['webinar_card_shown']}
+Зарегистрировались: {stats['registrations']}
 
-Регистрации: {stats['registrations']}
-По источникам: {groups(stats['by_source'])}
-По маршрутам: {groups(stats['by_route'])}
+Регистрации по источникам: {groups_text(stats['by_source'], source_label)}
+Регистрации по маршрутам: {groups_text(stats['by_route'], route_label)}
 
-Напоминания 24h: {stats['reminder_24h']}
-Напоминания 3h: {stats['reminder_3h']}
-Напоминания 15m: {stats['reminder_15m']}
-Клики на эфир: {stats['join_clicked']}
+Отправлено напоминаний за сутки: {stats['reminder_24h']}
+Отправлено напоминаний за 3 часа: {stats['reminder_3h']}
+Отправлено напоминаний за 15 минут: {stats['reminder_15m']}
+Открыли ссылку на эфир: {stats['join_clicked']}
 
-Конверсия в регистрацию: {stats['registration_conversion']:.1%}
-Конверсия в клик на эфир: {stats['join_click_conversion']:.1%}
+Доля зарегистрировавшихся среди увидевших приглашение: {stats['registration_conversion']:.1%}
+Доля открывших эфир среди зарегистрированных: {stats['join_click_conversion']:.1%}
 
-Кампания e02_1608_announcement:
+Переходы из анонса эфира 16 августа:
 Переходы: {announcement['entries']}
-Карточки: {announcement['cards']}
+Увидели приглашение: {announcement['cards']}
 Регистрации: {announcement['registrations']}
-Конверсия: {announcement['conversion']:.1%}"""
+Доля зарегистрировавшихся: {announcement['conversion']:.1%}"""
 
 
 async def send_leads_csv(message: Message, storage: VcStorage) -> None:
@@ -3138,29 +3182,29 @@ async def handle_material_wizard_text(message: Message, storage: VcStorage, wiza
     if step == "key":
         data["material_key"] = text.strip()
         state["step"] = "title"
-        await message.answer("Введи название материала.")
+        await message.answer("Введите название материала.")
         return True
     if step == "title":
         data["title"] = text.strip()
         state["step"] = "body"
-        await message.answer("Введи короткое описание/текст материала.\n\nМожно написать `-`, если описания нет.")
+        await message.answer("Введите короткое описание материала.\n\nМожно написать `-`, если описания нет.")
         return True
     if step == "body":
         data["body"] = None if text == "-" else text
         state["step"] = "url"
-        await message.answer("Вставь ссылку на материал.\n\nМожно написать `-`, если ссылки нет.")
+        await message.answer("Вставьте ссылку на материал.\n\nМожно написать `-`, если ссылки нет.")
         return True
     if step == "url":
         data["url"] = None if text == "-" else text
         state["step"] = "file"
-        await message.answer("Теперь можешь отправить файл/документ/картинку/видео для этого материала.\n\nМожно написать `-`, если файла нет.")
+        await message.answer("Теперь отправьте документ, изображение или видео.\n\nМожно написать `-`, если файла нет.")
         return True
     if step == "file":
         if text != "-":
-            await message.answer("Отправь файл или напиши `-`, если файла нет.")
+            await message.answer("Отправьте файл или напишите `-`, если файла нет.")
             return True
         state["step"] = "payloads"
-        await message.answer("К каким payload привязать материал?\n\nВведи payload через запятую.")
+        await message.answer("К каким ссылкам привязать материал?\n\nВведите их служебные коды через запятую.")
         return True
     if step == "payloads":
         payloads = [normalize_payload(part.strip()) or part.strip() for part in text.split(",") if part.strip()]
@@ -3169,7 +3213,15 @@ async def handle_material_wizard_text(message: Message, storage: VcStorage, wiza
             await storage.bind_material(payload, material.material_key)
         await storage.add_event(message.from_user.id, "admin_material_created", {"material_key": material.material_key, "payloads": payloads})  # type: ignore[union-attr]
         wizards.pop(message.from_user.id, None)  # type: ignore[arg-type]
-        await message.answer(f"Материал сохранён.\n\nMaterial key: {material.material_key}\nTitle: {material.title}\nURL: {'yes' if material.url else 'no'}\nFile: {'yes' if material.telegram_file_id else 'no'}\n\nPayloads:\n" + "\n".join(f"- {payload}" for payload in payloads))
+        await message.answer(
+            f"Материал сохранён.\n\n"
+            f"Служебный код: {material.material_key}\n"
+            f"Название: {material.title}\n"
+            f"Ссылка: {'да' if material.url else 'нет'}\n"
+            f"Файл: {'да' if material.telegram_file_id else 'нет'}\n\n"
+            "Коды связанных ссылок:\n"
+            + "\n".join(f"- {payload}" for payload in payloads)
+        )
         return True
     return False
 
@@ -3188,4 +3240,4 @@ async def handle_material_wizard_media(message: Message, wizards: dict[int, dict
     elif message.animation:
         data.update({"telegram_file_id": message.animation.file_id, "telegram_file_type": "animation", "telegram_file_name": message.animation.file_name})
     state["step"] = "payloads"
-    await message.answer("Файл сохранён. К каким payload привязать материал?\n\nВведи payload через запятую.")
+    await message.answer("Файл сохранён. К каким ссылкам привязать материал?\n\nВведите их служебные коды через запятую.")

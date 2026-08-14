@@ -8,7 +8,6 @@ import unittest
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -24,7 +23,7 @@ from bot.reminders import (
 )
 from bot.source_parser import parse_start_payload
 from bot.storage import VcStorage
-from bot.webinar import google_calendar_url, webinar_phase
+from bot.webinar import webinar_phase
 
 
 MOSCOW = ZoneInfo("Europe/Moscow")
@@ -208,14 +207,6 @@ class WebinarPureRulesTest(unittest.TestCase):
             webinar_phase(replace(settings, funnel_end_mode="personal_plan")),
             "personal_plan",
         )
-
-    def test_calendar_uses_utc_range_and_moscow_timezone(self) -> None:
-        query = parse_qs(urlparse(google_calendar_url(make_settings())).query)
-        self.assertEqual(
-            query["dates"],
-            ["20260803T160000Z/20260803T170000Z"],
-        )
-        self.assertEqual(query["ctz"], ["Europe/Moscow"])
 
     def test_each_route_has_exactly_three_actions(self) -> None:
         self.assertEqual(
@@ -432,6 +423,8 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
             ),
             1,
         )
+        self.assertNotIn("hb:webinar:calendar", callback_data(renderer.screens[-1]))
+        self.assertIn("hb:materials", callback_data(renderer.screens[-1]))
 
         await route_callback(
             renderer,
@@ -498,7 +491,7 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(registration.start_payload, "am_e02_register_1608")
         self.assertEqual(registration.campaign, "e02_1608_announcement")
         self.assertEqual(registration.post, "e02_announcement_1608")
-        self.assertEqual(callback_data(renderer.screens[-1]), ["hb:webinar:calendar"])
+        self.assertEqual(callback_data(renderer.screens[-1]), [])
         self.assertNotIn("3 августа", str(renderer.screens[-1]["text"]))
 
         deliveries = await (
@@ -525,6 +518,24 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
         ).fetchone()
         self.assertEqual(int(deliveries["total"]), 4)
         self.assertIn("Вы уже зарегистрированы", str(renderer.screens[-1]["text"]))
+
+        await route_callback(
+            renderer,
+            self.storage,
+            settings,
+            lead,
+            "hb:webinar:calendar",
+            None,
+        )
+        self.assertEqual(callback_data(renderer.screens[-1]), [])
+        self.assertNotIn("calendar", str(renderer.screens[-1]).lower())
+        self.assertEqual(
+            await self.storage.count_events(
+                lead.telegram_id,
+                "webinar_calendar_legacy_clicked",
+            ),
+            1,
+        )
 
         stats = await self.storage.webinar_stats("E02")
         campaign_stats = stats["e02_1608_announcement"]
@@ -559,7 +570,7 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
         renderer = FakeRenderer()
         await route_entry(renderer, self.storage, settings, lead)
         self.assertIn("Вы уже зарегистрированы", str(renderer.screens[-1]["text"]))
-        self.assertEqual(callback_data(renderer.screens[-1]), ["hb:webinar:calendar"])
+        self.assertEqual(callback_data(renderer.screens[-1]), [])
 
         await self.storage.update_webinar_event("E02", phase="closed")
         unregistered = await self.create_lead("am_e02_register_1608")
@@ -858,7 +869,11 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
             bottleneck="offer",
         )
         text = await webinar_admin_text(self.storage, settings)
-        self.assertIn("Регистрации: 1", text)
+        self.assertIn("Зарегистрировались: 1", text)
+        self.assertIn("Статус: Регистрация открыта", text)
+        self.assertIn("Регистрации по источникам: YouTube: 1", text)
+        self.assertNotIn("Join URL", text)
+        self.assertNotIn("registration", text)
         self.assertNotIn("secret.example", text)
         events = await self.storage.list_events(lead.telegram_id)
         self.assertNotIn(

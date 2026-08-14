@@ -66,8 +66,8 @@ class MaterialsAdminTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_material_preview_does_not_create_lead(self) -> None:
         text = await admin_preview_text(self.storage, make_settings(), "unknown_payload")
-        self.assertIn("Preview payload", text)
-        self.assertIn("fallback universal start", text) if "fallback universal start" in text else self.assertIn("Entry mode", text)
+        self.assertIn("Предпросмотр ссылки", text)
+        self.assertIn("Способ входа", text)
         self.assertIsNone(await self.storage.get_lead(123))
 
     async def test_links_show_only_two_public_routes(self) -> None:

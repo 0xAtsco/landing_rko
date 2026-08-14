@@ -698,9 +698,9 @@ class HermesRouterTest(unittest.IsolatedAsyncioTestCase):
         readiness = await hermes_readiness_text(
             self.storage, self.settings
         )
-        self.assertIn("hermes_find_business_guide: loaded", readiness)
-        self.assertIn("hermes_setup_windows_video: inactive", readiness)
-        self.assertIn("hermes_setup_macos_video: missing", readiness)
+        self.assertIn("Кому предложить Hermes-аудит: загружен", readiness)
+        self.assertIn("Установка Hermes на Windows: отключён", readiness)
+        self.assertIn("Установка Hermes на macOS: отсутствует", readiness)
 
         lead = await self.create_lead()
         await self.storage.add_event(
