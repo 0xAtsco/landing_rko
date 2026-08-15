@@ -43,6 +43,11 @@ from .catalog.hermes import (
     hermes_track,
 )
 from .config import Settings
+from .broadcasts import (
+    BROADCAST_CAMPAIGN_ID,
+    BROADCAST_REGISTER_CALLBACK,
+    BROADCAST_SOURCE_PAYLOAD,
+)
 from .hermes import hermes_result_text, send_material_bundle
 from .keyboards import (
     CALLBACK_ACCESS,
@@ -1399,18 +1404,39 @@ async def route_hermes_callback(
         )
         return
 
-    if data == "hb:webinar:register":
+    if data in {"hb:webinar:register", BROADCAST_REGISTER_CALLBACK}:
         phase = webinar_phase(settings)
-        payload = webinar_event_payload(settings, lead, phase=phase)
+        broadcast_registration = data == BROADCAST_REGISTER_CALLBACK
         entry_source = parse_start_payload(
-            lead.latest_start_payload or lead.raw_start_payload
+            BROADCAST_SOURCE_PAYLOAD
+            if broadcast_registration
+            else lead.latest_start_payload or lead.raw_start_payload
         )
-        direct_webinar = entry_source.entry_mode == "webinar_registration"
+        payload = webinar_event_payload(settings, lead, phase=phase)
+        if broadcast_registration:
+            payload.update(
+                {
+                    "source": entry_source.source,
+                    "start_payload": entry_source.raw_start_payload,
+                    "campaign": entry_source.campaign,
+                    "post": entry_source.post_id,
+                }
+            )
+        direct_webinar = (
+            broadcast_registration
+            or entry_source.entry_mode == "webinar_registration"
+        )
         await storage.add_event(
             lead.telegram_id,
             "webinar_registration_clicked",
             payload,
         )
+        if broadcast_registration:
+            await storage.add_event(
+                lead.telegram_id,
+                "webinar_broadcast_registration_clicked",
+                payload,
+            )
         if direct_webinar:
             await storage.add_event(
                 lead.telegram_id,
@@ -1470,6 +1496,16 @@ async def route_hermes_callback(
                     "webinar_direct_registered"
                     if created
                     else "webinar_direct_already_registered"
+                ),
+                payload,
+            )
+        if broadcast_registration:
+            await storage.add_event(
+                lead.telegram_id,
+                (
+                    "webinar_broadcast_registered"
+                    if created
+                    else "webinar_broadcast_already_registered"
                 ),
                 payload,
             )
@@ -3121,8 +3157,9 @@ async def webinar_admin_text(
         "e02_1608_announcement",
         {"entries": 0, "cards": 0, "registrations": 0, "conversion": 0.0},
     )
+    broadcast = await storage.broadcast_stats(BROADCAST_CAMPAIGN_ID)
 
-    return f"""Эфир {event_id}
+    text = f"""Эфир {event_id}
 
 Статус: {phase_label(phase)}
 Дата: {runtime.webinar_start_at.strftime('%d.%m.%Y %H:%M МСК') if runtime.webinar_start_at else 'не задана'}
@@ -3153,6 +3190,19 @@ async def webinar_admin_text(
 Увидели приглашение: {announcement['cards']}
 Регистрации: {announcement['registrations']}
 Доля зарегистрировавшихся: {announcement['conversion']:.1%}"""
+    return f"""{text}
+
+Рассылка приглашения 15 августа:
+Получатели: {broadcast['recipients']}
+Доставлено: {broadcast['sent']}
+Бот заблокирован или чат недоступен: {broadcast['blocked']}
+Ожидают отправки: {broadcast['pending']}
+Временные ошибки: {broadcast['temporary_errors']}
+Неопределённый результат: {broadcast['unknown_results']}
+Нажали регистрацию: {broadcast['clicks']}
+Новые регистрации: {broadcast['registrations']}
+Уже были зарегистрированы: {broadcast['repeated_registrations']}
+Доля новых регистраций среди доставленных: {broadcast['conversion']:.1%}"""
 
 
 async def send_leads_csv(message: Message, storage: VcStorage) -> None:

@@ -11,6 +11,7 @@ import aiosqlite
 
 from .analytics import calculate_temperature
 from .models import (
+    BroadcastDelivery,
     Event,
     Lead,
     Material,
@@ -296,6 +297,24 @@ class VcStorage:
             CREATE INDEX IF NOT EXISTS idx_vc_webinar_deliveries_due
                 ON vc_funnel_webinar_deliveries (event_id, event_version, status, scheduled_at);
 
+            CREATE TABLE IF NOT EXISTS vc_funnel_broadcast_deliveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campaign_id TEXT NOT NULL,
+                event_id TEXT NOT NULL,
+                telegram_user_id INTEGER NOT NULL,
+                telegram_chat_id INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                message_id INTEGER,
+                last_error TEXT,
+                sent_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(campaign_id, telegram_user_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_vc_broadcast_deliveries_status
+                ON vc_funnel_broadcast_deliveries (campaign_id, status, id);
+
             CREATE TABLE IF NOT EXISTS vc_funnel_support_tickets (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -364,6 +383,147 @@ class VcStorage:
             },
         )
         await self.db.commit()
+
+    async def prepare_broadcast(self, campaign_id: str, event_id: str) -> int:
+        now = self.now()
+        await self.db.execute("BEGIN IMMEDIATE")
+        existing = await (
+            await self.db.execute(
+                "SELECT COUNT(*) AS total FROM vc_funnel_broadcast_deliveries WHERE campaign_id = ?",
+                (campaign_id,),
+            )
+        ).fetchone()
+        if int(existing["total"] or 0) > 0:
+            await self.db.commit()
+            return int(existing["total"])
+        await self.db.execute(
+            """
+            INSERT INTO vc_funnel_broadcast_deliveries (
+                campaign_id, event_id, telegram_user_id, telegram_chat_id,
+                status, attempts, created_at, updated_at
+            )
+            SELECT ?, ?, telegram_id, telegram_id, 'pending', 0, ?, ?
+            FROM vc_funnel_leads
+            WHERE telegram_id IS NOT NULL
+            ON CONFLICT(campaign_id, telegram_user_id) DO NOTHING
+            """,
+            (campaign_id, event_id, now, now),
+        )
+        await self.db.commit()
+        row = await (
+            await self.db.execute(
+                "SELECT COUNT(*) AS total FROM vc_funnel_broadcast_deliveries WHERE campaign_id = ?",
+                (campaign_id,),
+            )
+        ).fetchone()
+        return int(row["total"] or 0)
+
+    async def list_broadcast_deliveries(
+        self,
+        campaign_id: str,
+        *,
+        max_attempts: int = 3,
+    ) -> list[BroadcastDelivery]:
+        cursor = await self.db.execute(
+            """
+            SELECT id, campaign_id, event_id, telegram_user_id,
+                   telegram_chat_id, status, attempts, message_id,
+                   last_error, sent_at, created_at, updated_at
+            FROM vc_funnel_broadcast_deliveries
+            WHERE campaign_id = ?
+              AND status IN ('pending', 'temporary_error')
+              AND attempts < ?
+            ORDER BY id
+            """,
+            (campaign_id, max_attempts),
+        )
+        return [self._row_to_broadcast_delivery(row) for row in await cursor.fetchall()]
+
+    async def claim_broadcast_delivery(self, delivery_id: int) -> bool:
+        cursor = await self.db.execute(
+            """
+            UPDATE vc_funnel_broadcast_deliveries
+            SET status = 'sending', attempts = attempts + 1, updated_at = ?
+            WHERE id = ? AND status IN ('pending', 'temporary_error')
+            """,
+            (self.now(), delivery_id),
+        )
+        await self.db.commit()
+        return cursor.rowcount == 1
+
+    async def mark_broadcast_delivery(
+        self,
+        delivery_id: int,
+        *,
+        status: str,
+        message_id: int | None = None,
+        error: str | None = None,
+    ) -> bool:
+        if status not in {
+            "sent",
+            "blocked",
+            "temporary_error",
+            "unknown_result",
+        }:
+            raise ValueError("Unsupported broadcast delivery status")
+        now = self.now()
+        cursor = await self.db.execute(
+            """
+            UPDATE vc_funnel_broadcast_deliveries
+            SET status = ?, message_id = COALESCE(?, message_id),
+                last_error = ?, sent_at = CASE WHEN ? = 'sent' THEN ? ELSE sent_at END,
+                updated_at = ?
+            WHERE id = ? AND status = 'sending'
+            """,
+            (status, message_id, error, status, now, now, delivery_id),
+        )
+        await self.db.commit()
+        return cursor.rowcount == 1
+
+    async def broadcast_stats(self, campaign_id: str) -> dict[str, int | float]:
+        cursor = await self.db.execute(
+            """
+            SELECT status, COUNT(*) AS total
+            FROM vc_funnel_broadcast_deliveries
+            WHERE campaign_id = ?
+            GROUP BY status
+            """,
+            (campaign_id,),
+        )
+        statuses = {str(row["status"]): int(row["total"]) for row in await cursor.fetchall()}
+
+        async def event_count(event_type: str) -> int:
+            row = await (
+                await self.db.execute(
+                    """
+                    SELECT COUNT(DISTINCT telegram_id) AS total
+                    FROM vc_funnel_events
+                    WHERE event_type = ?
+                      AND json_extract(event_payload_json, '$.campaign') = ?
+                    """,
+                    (event_type, campaign_id),
+                )
+            ).fetchone()
+            return int(row["total"] or 0)
+
+        recipients = sum(statuses.values())
+        sent = statuses.get("sent", 0)
+        clicks = await event_count("webinar_broadcast_registration_clicked")
+        registrations = await event_count("webinar_broadcast_registered")
+        repeated = await event_count("webinar_broadcast_already_registered")
+        return {
+            "recipients": recipients,
+            "pending": statuses.get("pending", 0),
+            "sending": statuses.get("sending", 0),
+            "sent": sent,
+            "blocked": statuses.get("blocked", 0),
+            "temporary_errors": statuses.get("temporary_error", 0),
+            "unknown_results": statuses.get("unknown_result", 0),
+            "clicks": clicks,
+            "registrations": registrations,
+            "repeated_registrations": repeated,
+            "conversion": registrations / sent if sent else 0.0,
+        }
 
     async def _ensure_columns(self, table: str, columns: dict[str, str]) -> None:
         cursor = await self.db.execute(f"PRAGMA table_info({table})")
@@ -2013,6 +2173,23 @@ class VcStorage:
             payload_json=row["payload_json"],
             sent_at=row["sent_at"],
             error_type=row["error_type"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    @staticmethod
+    def _row_to_broadcast_delivery(row: aiosqlite.Row) -> BroadcastDelivery:
+        return BroadcastDelivery(
+            id=row["id"],
+            campaign_id=row["campaign_id"],
+            event_id=row["event_id"],
+            telegram_user_id=row["telegram_user_id"],
+            telegram_chat_id=row["telegram_chat_id"],
+            status=row["status"],
+            attempts=row["attempts"],
+            message_id=row["message_id"],
+            last_error=row["last_error"],
+            sent_at=row["sent_at"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

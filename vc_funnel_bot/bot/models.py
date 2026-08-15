@@ -216,6 +216,22 @@ class WebinarDelivery:
 
 
 @dataclass(frozen=True)
+class BroadcastDelivery:
+    id: int
+    campaign_id: str
+    event_id: str
+    telegram_user_id: int
+    telegram_chat_id: int
+    status: str
+    attempts: int
+    message_id: int | None
+    last_error: str | None
+    sent_at: str | None
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class SupportTicket:
     id: int
     user_id: int
