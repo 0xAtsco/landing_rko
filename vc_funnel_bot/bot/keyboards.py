@@ -419,6 +419,19 @@ def direct_webinar_registration_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def webinar_broadcast_registration_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Зарегистрироваться",
+                    callback_data="hb:webinar:broadcast_register",
+                )
+            ]
+        ]
+    )
+
+
 def direct_webinar_confirmation_keyboard(
     phase: str,
     *,

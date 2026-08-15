@@ -447,7 +447,11 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_direct_entry_registers_with_last_touch_and_keeps_first_touch(self) -> None:
-        start = datetime(2026, 8, 16, 19, 0, tzinfo=MOSCOW)
+        start = (datetime.now(MOSCOW) + timedelta(days=2)).replace(
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
         settings = make_settings(start=start, end=start + timedelta(hours=1))
         await self.storage.ensure_webinar_event(
             event_id="E02",
@@ -471,7 +475,10 @@ class WebinarStorageAndFlowTest(unittest.IsolatedAsyncioTestCase):
             callback_data(renderer.screens[-1]),
             ["hb:webinar:register"],
         )
-        self.assertIn("16.08.2026 в 19:00 МСК", str(renderer.screens[-1]["text"]))
+        self.assertIn(
+            start.strftime("%d.%m.%Y в %H:%M МСК"),
+            str(renderer.screens[-1]["text"]),
+        )
         self.assertEqual(
             (lead.source, lead.raw_start_payload, lead.campaign),
             first_touch,
