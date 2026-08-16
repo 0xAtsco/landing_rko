@@ -1,12 +1,11 @@
-import { APPLICATION_URL, hero } from "@/lib/content";
-import { MagneticButton } from "./MagneticButton";
+import { hero } from "@/lib/content";
 import { TrafficSystemHeroAnimation } from "./TrafficSystemHeroAnimation";
 
 export function Hero() {
   const titleParts = hero.title.split("вайбкодинга");
 
   return (
-    <section className="relative isolate overflow-hidden px-4 pb-12 pt-24 sm:px-6 sm:pb-16 lg:pt-28">
+    <section className="relative isolate overflow-hidden px-4 pb-12 pt-12 sm:px-6 sm:pb-16 sm:pt-16 lg:pt-20">
       <div aria-hidden="true" className="absolute inset-0 -z-10">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_48%_12%,rgb(var(--signal-rgb)/0.20),transparent_25rem),linear-gradient(180deg,var(--surface-base)_0%,var(--surface-2)_52%,var(--surface-base)_100%)]" />
         <div className="tiffany-dot-field absolute inset-0 opacity-50" />
@@ -31,12 +30,6 @@ export function Hero() {
               {hero.subtitle}
             </p>
           ) : null}
-
-          <div className="mt-7 flex flex-col items-stretch gap-3 sm:flex-row sm:justify-center lg:justify-start">
-            <MagneticButton href={APPLICATION_URL} analytics="hero_apply">
-              {hero.primaryCta}
-            </MagneticButton>
-          </div>
         </div>
 
         <div data-reveal className="relative mx-auto w-full max-w-[650px]">
